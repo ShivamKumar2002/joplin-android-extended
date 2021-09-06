@@ -1,10 +1,18 @@
 # Joplin Server Changelog
 
-## [server-v2.4.1-beta](https://github.com/laurent22/joplin/releases/tag/server-v2.4.1-beta) (Pre-release) - 2021-08-23T08:52:28Z
+## [server-v2.4.3-beta](https://github.com/laurent22/joplin/releases/tag/server-v2.4.3-beta) (Pre-release) - 2021-09-02T17:49:11Z
+
+- New: Added Help page for Joplin Cloud (6520a48)
+- New: Added icon next to profile button (5805a41)
+- Improved: Display note title as page title when sharing note (82331c9)
+- Fixed: Fixed calculation of max sizes for Postgres (93a4ad0)
+
+## [server-v2.4.2](https://github.com/laurent22/joplin/releases/tag/server-v2.4.2) - 2021-08-28T17:45:41Z
 
 - New: Add request rate limter on session and login end points (543413d)
 - New: Add support for user flags (82b157b)
 - New: Added commands to control db migrations - list, down, up (2c79ce2)
+- Improved: Display user flags in profile when logged in as admin (4394329)
 - Improved: Handle flags for accounts over limit (6e087bc)
 - Improved: Increase cookies security - set HttpOnly, Secure and SameSite flags (bcadb36)
 - Improved: No longer install vim into the image (#5337 by [@piotrb](https://github.com/piotrb))
@@ -12,7 +20,7 @@
 - Improved: Switch to node:16-bullseye base image (#5202 by [@piotrb](https://github.com/piotrb))
 - Fixed: Prevent crash when returning too many rows using SQLite (1efe3d3)
 - Fixed: Filenames with non-ascii characters could not be downloaded from published note (#5328)
-- Fixed: Fix missing CSS file error (#5309 by [@aaron](https://github.com/aaron))
+- Fixed: Fix missing CSS file error (#5309 by [@whalehub](https://github.com/whalehub))
 - Fixed: Fixed second duration (c7421df)
 
 ## [server-v2.3.7-beta](https://github.com/laurent22/joplin/releases/tag/server-v2.3.7-beta) (Pre-release) - 2021-08-13T21:20:17Z

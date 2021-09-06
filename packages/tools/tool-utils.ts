@@ -109,7 +109,7 @@ async function saveGitHubUsernameCache(cache: any) {
 // Returns the project root dir
 export const rootDir = require('path').dirname(require('path').dirname(__dirname));
 
-export function execCommand(command: string, options: any = null) {
+export function execCommand(command: string, options: any = null): Promise<string> {
 	options = options || {};
 
 	const exec = require('child_process').exec;
@@ -147,6 +147,7 @@ export function execCommandVerbose(commandName: string, args: string[] = []) {
 interface ExecCommandOptions {
 	showInput?: boolean;
 	showOutput?: boolean;
+	showError?: boolean;
 	quiet?: boolean;
 }
 
@@ -160,6 +161,7 @@ export async function execCommand2(command: string | string[], options: ExecComm
 	options = {
 		showInput: true,
 		showOutput: true,
+		showError: true,
 		quiet: false,
 		...options,
 	};
@@ -167,6 +169,7 @@ export async function execCommand2(command: string | string[], options: ExecComm
 	if (options.quiet) {
 		options.showInput = false;
 		options.showOutput = false;
+		options.showError = false;
 	}
 
 	if (options.showInput) {
@@ -182,6 +185,7 @@ export async function execCommand2(command: string | string[], options: ExecComm
 	args.splice(0, 1);
 	const promise = execa(executableName, args);
 	if (options.showOutput) promise.stdout.pipe(process.stdout);
+	if (options.showError) promise.stderr.pipe(process.stderr);
 	const result = await promise;
 	return result.stdout.trim();
 }
@@ -322,6 +326,11 @@ export async function githubUsername(email: string, name: string) {
 
 	const urlsToTry = [
 		`https://api.github.com/search/users?q=${encodeURI(email)}+in:email`,
+
+		// Note that this can fail if the email could not be found and the user
+		// shares a name with someone else. It's rare enough that we can leave
+		// it for now.
+		// https://github.com/laurent22/joplin/pull/5390
 		`https://api.github.com/search/users?q=user:${encodeURI(name)}`,
 	];
 
