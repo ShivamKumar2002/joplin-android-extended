@@ -3,7 +3,7 @@ require('source-map-support').install();
 
 import * as Koa from 'koa';
 import * as fs from 'fs-extra';
-import { argv } from 'yargs';
+import { argv as yargsArgv } from 'yargs';
 import Logger, { LoggerWrapper, TargetType } from '@joplin/lib/Logger';
 import config, { initConfig, runningInDocker, EnvVariables } from './config';
 import { createDb, dropDb } from './tools/dbTools';
@@ -18,11 +18,33 @@ import { initializeJoplinUtils } from './utils/joplinUtils';
 import startServices from './utils/startServices';
 import { credentialFile } from './utils/testing/testUtils';
 import apiVersionHandler from './middleware/apiVersionHandler';
+import clickJackingHandler from './middleware/clickJackingHandler';
+import deleteOldChanges from './commands/deleteOldChanges';
+import newModelFactory from './models/factory';
+import deleteOldChanges90 from './commands/deleteOldChanges90';
 
+interface Argv {
+	env?: Env;
+	migrateLatest?: boolean;
+	migrateUp?: boolean;
+	migrateDown?: boolean;
+	migrateList?: boolean;
+	dropDb?: boolean;
+	pidfile?: string;
+	dropTables?: boolean;
+	createDb?: boolean;
+	envFile?: string;
+	deleteOldChanges?: boolean;
+	deleteOldChanges90?: boolean;
+}
+
+const argv: Argv = yargsArgv as any;
+
+const nodeSqlite = require('sqlite3');
 const cors = require('@koa/cors');
 const nodeEnvFile = require('node-env-file');
 const { shimInit } = require('@joplin/lib/shim-init-node.js');
-shimInit();
+shimInit({ nodeSqlite });
 
 const env: Env = argv.env as Env || Env.Prod;
 
@@ -89,14 +111,6 @@ async function main() {
 	};
 
 	const app = new Koa();
-
-	// app.use(async function responseTime(ctx:AppContext, next:Function) {
-	// 	const start = Date.now();
-	// 	await next();
-	// 	const ms = Date.now() - start;
-	// 	console.info('Response time', ms)
-	// 	//ctx.set('X-Response-Time', `${ms}ms`);
-	// });
 
 	// Note: the order of middlewares is important. For example, ownerHandler
 	// loads the user, which is then used by notificationHandler. And finally
@@ -179,6 +193,7 @@ async function main() {
 	app.use(apiVersionHandler);
 	app.use(ownerHandler);
 	app.use(notificationHandler);
+	app.use(clickJackingHandler);
 	app.use(routeHandler);
 
 	await initConfig(env, envVariables);
@@ -230,6 +245,20 @@ async function main() {
 		await disconnectDb(db);
 	} else if (argv.createDb) {
 		await createDb(config().database);
+	} else if (argv.deleteOldChanges || argv.deleteOldChanges90) {
+		// Eventually all commands should be started in a more generic way. All
+		// should go under /commands, and they will receive a context object
+		// with an intialized models property.
+		//
+		// Also should use yargs command system.
+		const connectionCheck = await waitForConnection(config().database);
+		const models = newModelFactory(connectionCheck.connection, config());
+
+		if (argv.deleteOldChanges90) {
+			await deleteOldChanges90({ models });
+		} else {
+			await deleteOldChanges({ models });
+		}
 	} else {
 		runCommandAndExitApp = false;
 

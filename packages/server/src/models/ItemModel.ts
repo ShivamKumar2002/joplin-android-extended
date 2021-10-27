@@ -106,11 +106,16 @@ export default class ItemModel extends BaseModel<Item> {
 		return path.replace(extractNameRegex, '$1');
 	}
 
-	public async byShareId(shareId: Uuid, options: LoadOptions = {}): Promise<Item[]> {
+	public byShareIdQuery(shareId: Uuid, options: LoadOptions = {}): Knex.QueryBuilder {
 		return this
 			.db('items')
 			.select(this.selectFields(options, null, 'items'))
 			.where('jop_share_id', '=', shareId);
+	}
+
+	public async byShareId(shareId: Uuid, options: LoadOptions = {}): Promise<Item[]> {
+		const query = this.byShareIdQuery(shareId, options);
+		return await query;
 	}
 
 	public async loadByJopIds(userId: Uuid | Uuid[], jopIds: string[], options: LoadOptions = {}): Promise<Item[]> {
@@ -544,6 +549,22 @@ export default class ItemModel extends BaseModel<Item> {
 		}
 	}
 
+	public async makeTestItem(userId: Uuid, num: number) {
+		return this.saveForUser(userId, {
+			name: `${num.toString().padStart(32, '0')}.md`,
+		});
+	}
+
+	public async makeTestItems(userId: Uuid, count: number) {
+		await this.withTransaction(async () => {
+			for (let i = 1; i <= count; i++) {
+				await this.saveForUser(userId, {
+					name: `${i.toString().padStart(32, '0')}.md`,
+				});
+			}
+		}, 'ItemModel::makeTestItems');
+	}
+
 	public async saveForUser(userId: Uuid, item: Item, options: SaveOptions = {}): Promise<Item> {
 		if (!userId) throw new Error('userId is required');
 
@@ -623,7 +644,11 @@ export default class ItemModel extends BaseModel<Item> {
 				} else {
 					const itemIds: Uuid[] = unique(changes.map(c => c.item_id));
 					const userItems: UserItem[] = await this.db('user_items').select('user_id').whereIn('item_id', itemIds);
-					const userIds: Uuid[] = unique(userItems.map(u => u.user_id));
+					const userIds: Uuid[] = unique(
+						userItems
+							.map(u => u.user_id)
+							.concat(changes.map(c => c.user_id))
+					);
 
 					const totalSizes: TotalSizeRow[] = [];
 					for (const userId of userIds) {

@@ -1,8 +1,13 @@
 import { rtrimSlashes } from '@joplin/lib/path-utils';
 import { Config, DatabaseConfig, DatabaseConfigClient, Env, MailerConfig, RouteType, StripeConfig } from './utils/types';
 import * as pathUtils from 'path';
-import { readFile } from 'fs-extra';
 import { loadStripeConfig, StripePublicConfig } from '@joplin/lib/utils/joplinCloud';
+
+interface PackageJson {
+	version: string;
+}
+
+const packageJson: PackageJson = require(`${__dirname}/packageInfo.js`);
 
 export interface EnvVariables {
 	APP_NAME?: string;
@@ -10,6 +15,7 @@ export interface EnvVariables {
 	APP_BASE_URL?: string;
 	USER_CONTENT_BASE_URL?: string;
 	API_BASE_URL?: string;
+	JOPLINAPP_BASE_URL?: string;
 
 	APP_PORT?: string;
 	DB_CLIENT?: string;
@@ -48,12 +54,30 @@ export interface EnvVariables {
 	BUSINESS_EMAIL?: string;
 
 	COOKIES_SECURE?: string;
+
+	SLOW_QUERY_LOG_ENABLED?: string;
+	SLOW_QUERY_LOG_MIN_DURATION?: string; // ms
 }
 
 let runningInDocker_: boolean = false;
 
 export function runningInDocker(): boolean {
 	return runningInDocker_;
+}
+
+function envReadString(s: string, defaultValue: string = ''): string {
+	return s === undefined || s === null ? defaultValue : s;
+}
+
+function envReadBool(s: string): boolean {
+	return s === '1';
+}
+
+function envReadInt(s: string, defaultValue: number = null): number {
+	if (!s) return defaultValue === null ? 0 : defaultValue;
+	const output = Number(s);
+	if (isNaN(output)) throw new Error(`Invalid number: ${s}`);
+	return output;
 }
 
 function databaseHostFromEnv(runningInDocker: boolean, env: EnvVariables): string {
@@ -72,8 +96,16 @@ function databaseHostFromEnv(runningInDocker: boolean, env: EnvVariables): strin
 }
 
 function databaseConfigFromEnv(runningInDocker: boolean, env: EnvVariables): DatabaseConfig {
+	const baseConfig: DatabaseConfig = {
+		client: DatabaseConfigClient.Null,
+		name: '',
+		slowQueryLogEnabled: envReadBool(env.SLOW_QUERY_LOG_ENABLED),
+		slowQueryLogMinDuration: envReadInt(env.SLOW_QUERY_LOG_MIN_DURATION, 10000),
+	};
+
 	if (env.DB_CLIENT === 'pg') {
 		return {
+			...baseConfig,
 			client: DatabaseConfigClient.PostgreSQL,
 			name: env.POSTGRES_DATABASE || 'joplin',
 			user: env.POSTGRES_USER || 'joplin',
@@ -84,6 +116,7 @@ function databaseConfigFromEnv(runningInDocker: boolean, env: EnvVariables): Dat
 	}
 
 	return {
+		...baseConfig,
 		client: DatabaseConfigClient.SQLite,
 		name: env.SQLITE_DATABASE,
 		asyncStackTraces: true,
@@ -120,25 +153,13 @@ function baseUrlFromEnv(env: any, appPort: number): string {
 	}
 }
 
-interface PackageJson {
-	version: string;
-}
-
-async function readPackageJson(filePath: string): Promise<PackageJson> {
-	const text = await readFile(filePath, 'utf8');
-	return JSON.parse(text);
-}
-
 let config_: Config = null;
 
 export async function initConfig(envType: Env, env: EnvVariables, overrides: any = null) {
 	runningInDocker_ = !!env.RUNNING_IN_DOCKER;
 
 	const rootDir = pathUtils.dirname(__dirname);
-
-	const packageJson = await readPackageJson(`${rootDir}/package.json`);
 	const stripePublicConfig = loadStripeConfig(envType === Env.BuildTypes ? Env.Dev : envType, `${rootDir}/stripeConfig.json`);
-
 	const appName = env.APP_NAME || 'Joplin Server';
 	const viewDir = `${rootDir}/src/views`;
 	const appPort = env.APP_PORT ? Number(env.APP_PORT) : 22300;
@@ -164,6 +185,7 @@ export async function initConfig(envType: Env, env: EnvVariables, overrides: any
 		showErrorStackTraces: (env.ERROR_STACK_TRACES === undefined && envType === Env.Dev) || env.ERROR_STACK_TRACES === '1',
 		apiBaseUrl,
 		userContentBaseUrl: env.USER_CONTENT_BASE_URL ? env.USER_CONTENT_BASE_URL : baseUrl,
+		joplinAppBaseUrl: envReadString(env.JOPLINAPP_BASE_URL, 'https://joplinapp.org'),
 		signupEnabled: env.SIGNUP_ENABLED === '1',
 		termsEnabled: env.TERMS_ENABLED === '1',
 		accountTypesEnabled: env.ACCOUNT_TYPES_ENABLED === '1',
