@@ -12,11 +12,19 @@ export default function(env: Env, models: Models, config: Config): TaskService {
 			schedule: '0 */6 * * *',
 			run: (models: Models) => models.token().deleteExpiredTokens(),
 		},
+
 		{
 			id: TaskId.UpdateTotalSizes,
 			description: 'Update total sizes',
 			schedule: '0 * * * *',
 			run: (models: Models) => models.item().updateTotalSizes(),
+		},
+
+		{
+			id: TaskId.CompressOldChanges,
+			description: 'Compress old changes',
+			schedule: '0 0 */2 * *',
+			run: (models: Models) => models.change().compressOldChanges(),
 		},
 
 		// Need to do it relatively frequently so that if the user fixes
@@ -26,16 +34,16 @@ export default function(env: Env, models: Models, config: Config): TaskService {
 		{
 			id: TaskId.HandleOversizedAccounts,
 			description: 'Process oversized accounts',
-			schedule: '0 */2 30 * *',
+			schedule: '30 */2 * * *',
 			run: (models: Models) => models.user().handleOversizedAccounts(),
 		},
 
-		{
-			id: TaskId.DeleteExpiredSessions,
-			description: 'Delete expired sessions',
-			schedule: '0 */6 * * *',
-			run: (models: Models) => models.session().deleteExpiredSessions(),
-		},
+		// {
+		// 	id: TaskId.DeleteExpiredSessions,
+		// 	description: 'Delete expired sessions',
+		// 	schedule: '0 */6 * * *',
+		// 	run: (models: Models) => models.session().deleteExpiredSessions(),
+		// },
 	];
 
 	if (config.isJoplinCloud) {

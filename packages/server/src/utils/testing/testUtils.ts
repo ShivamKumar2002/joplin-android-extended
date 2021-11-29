@@ -23,6 +23,7 @@ import MustacheService from '../../services/MustacheService';
 import uuidgen from '../uuidgen';
 import { createCsrfToken } from '../csrf';
 import { cookieSet } from '../cookies';
+import { parseEnv } from '../../env';
 
 // Takes into account the fact that this file will be inside the /dist directory
 // when it runs.
@@ -36,12 +37,16 @@ export function randomHash(): string {
 	return crypto.createHash('md5').update(`${Date.now()}-${Math.random()}`).digest('hex');
 }
 
+export function tempDirPath(): string {
+	return `${packageRootDir}/temp/${randomHash()}`;
+}
+
 let tempDir_: string = null;
-export async function tempDir(): Promise<string> {
-	if (tempDir_) return tempDir_;
-	tempDir_ = `${packageRootDir}/temp/${randomHash()}`;
-	await fs.mkdirp(tempDir_);
-	return tempDir_;
+export async function tempDir(subDir: string = null): Promise<string> {
+	if (!tempDir_) tempDir_ = tempDirPath();
+	const fullDir = tempDir_ + (subDir ? `/${subDir}` : '');
+	await fs.mkdirp(fullDir);
+	return fullDir;
 }
 
 export async function makeTempFileWithContent(content: string | Buffer): Promise<string> {
@@ -73,20 +78,20 @@ export async function beforeAllDb(unitName: string, createDbOptions: CreateDbOpt
 	//
 	// sudo docker compose -f docker-compose.db-dev.yml up
 
-	// await initConfig(Env.Dev, {
+	// await initConfig(Env.Dev, parseEnv({
 	// 	DB_CLIENT: 'pg',
 	// 	POSTGRES_DATABASE: unitName,
 	// 	POSTGRES_USER: 'joplin',
 	// 	POSTGRES_PASSWORD: 'joplin',
 	// 	SUPPORT_EMAIL: 'testing@localhost',
-	// }, {
+	// }), {
 	// 	tempDir: tempDir,
 	// });
 
-	await initConfig(Env.Dev, {
+	await initConfig(Env.Dev, parseEnv({
 		SQLITE_DATABASE: createdDbPath_,
 		SUPPORT_EMAIL: 'testing@localhost',
-	}, {
+	}), {
 		tempDir: tempDir,
 	});
 
@@ -236,10 +241,6 @@ interface UserAndSession {
 export function db() {
 	return db_;
 }
-
-// function baseUrl() {
-// 	return 'http://localhost:22300';
-// }
 
 export function models() {
 	return modelFactory(db(), config());
@@ -414,6 +415,23 @@ export async function readCredentialFile(filename: string, defaultValue: string 
 	return r.toString();
 }
 
+export function credentialFileSync(filename: string): string {
+	const filePath = `${require('os').homedir()}/joplin-credentials/${filename}`;
+	if (fs.pathExistsSync(filePath)) return filePath;
+	return '';
+}
+
+export function readCredentialFileSync(filename: string, defaultValue: string = null) {
+	const filePath = credentialFileSync(filename);
+	if (!filePath) {
+		if (defaultValue === null) throw new Error(`File not found: ${filename}`);
+		return defaultValue;
+	}
+
+	const r = fs.readFileSync(filePath);
+	return r.toString();
+}
+
 export async function checkThrowAsync(asyncFn: Function): Promise<any> {
 	try {
 		await asyncFn();
@@ -435,7 +453,7 @@ export async function expectThrow(asyncFn: Function, errorCode: any = undefined)
 
 	if (!hasThrown) {
 		expect('not throw').toBe('throw');
-	} else if (thrownError.code !== errorCode) {
+	} else if (errorCode !== undefined && thrownError.code !== errorCode) {
 		console.error(thrownError);
 		expect(`error code: ${thrownError.code}`).toBe(`error code: ${errorCode}`);
 	} else {
@@ -507,6 +525,7 @@ markup_language: 1
 is_shared: 1
 share_id: ${note.share_id || ''}
 conflict_original_id: 
+master_key_id: 
 type_: 1`;
 }
 

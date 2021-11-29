@@ -5,6 +5,7 @@ import JoplinError from './JoplinError';
 import { Env } from './models/Setting';
 import Logger from './Logger';
 import personalizedUserContentBaseUrl from './services/joplinServer/personalizedUserContentBaseUrl';
+import { getHttpStatusMessage } from './net-utils';
 const { stringify } = require('query-string');
 
 const logger = Logger.create('JoplinServerApi');
@@ -65,7 +66,7 @@ export default class JoplinServerApi {
 		if (this.session_) return this.session_;
 
 		try {
-			this.session_ = await this.exec('POST', 'api/sessions', null, {
+			this.session_ = await this.exec_('POST', 'api/sessions', null, {
 				email: this.options_.username(),
 				password: this.options_.password(),
 			});
@@ -142,7 +143,7 @@ export default class JoplinServerApi {
 		}
 
 		if (sessionId) headers['X-API-AUTH'] = sessionId;
-		headers['X-API-MIN-VERSION'] = '2.1.4';
+		headers['X-API-MIN-VERSION'] = '2.6.0'; // Need server 2.6 for new lock support
 
 		const fetchOptions: any = {};
 		fetchOptions.headers = headers;
@@ -218,7 +219,7 @@ export default class JoplinServerApi {
 			};
 
 			if (!response.ok) {
-				if (options.target === 'file') throw newError('fetchBlob error', response.status);
+				if (options.target === 'file') throw newError(`Cannot transfer file: ${await response.text()}`, response.status);
 
 				let json = null;
 				try {
@@ -245,7 +246,7 @@ export default class JoplinServerApi {
 				//         <hr><center>nginx/1.18.0 (Ubuntu)</center>
 				//     </body>
 				// </html>
-				throw newError(`Unknown error: ${shortResponseText()}`, response.status);
+				throw newError(`Error ${response.status} ${getHttpStatusMessage(response.status)}: ${shortResponseText()}`, response.status);
 			}
 
 			if (options.responseFormat === 'text') return responseText;
@@ -253,8 +254,12 @@ export default class JoplinServerApi {
 			const output = await loadResponseJson();
 			return output;
 		} catch (error) {
-			if (error.code !== 404) {
+			// Don't print error info for file not found (handled by the
+			// driver), or lock-acquisition errors because it's handled by
+			// LockHandler.
+			if (![404, 'hasExclusiveLock', 'hasSyncLock'].includes(error.code)) {
 				logger.warn(this.requestToCurl_(url, fetchOptions));
+				logger.warn('Code:', error.code);
 				logger.warn(error);
 			}
 

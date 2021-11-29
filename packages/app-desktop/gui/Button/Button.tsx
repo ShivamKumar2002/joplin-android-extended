@@ -27,40 +27,47 @@ interface Props {
 	disabled?: boolean;
 	style?: any;
 	size?: ButtonSize;
+	isSquare?: boolean;
+	iconOnly?: boolean;
+	fontSize?: number;
 }
 
 const StyledTitle = styled.span`
 
 `;
 
-// const buttonHeight = 32;
+// const buttonSizePx = 32;
 
-const buttonHeight = (props: Props) => {
+export const buttonSizePx = (props: Props) => {
 	if (!props.size || props.size === ButtonSize.Normal) return 32;
 	if (props.size === ButtonSize.Small) return 26;
 	throw new Error(`Unknown size: ${props.size}`);
+};
+
+const isSquare = (props: Props) => {
+	return props.iconOnly || props.isSquare;
 };
 
 const StyledButtonBase = styled.button`
 	display: flex;
 	align-items: center;
 	flex-direction: row;
-	height: ${(props: Props) => buttonHeight(props)}px;
-	min-height: ${(props: Props) => buttonHeight(props)}px;
-	max-height: ${(props: Props) => buttonHeight(props)}px;
-	width: ${(props: any) => props.iconOnly ? `${buttonHeight}px` : 'auto'};
-	${(props: any) => props.iconOnly ? `min-width: ${buttonHeight}px;` : ''}
-	${(props: any) => !props.iconOnly ? 'min-width: 100px;' : ''}
-	${(props: any) => props.iconOnly ? `max-width: ${buttonHeight}px;` : ''}
+	height: ${(props: Props) => buttonSizePx(props)}px;
+	min-height: ${(props: Props) => buttonSizePx(props)}px;
+	max-height: ${(props: Props) => buttonSizePx(props)}px;
+	width: ${(props: Props) => isSquare(props) ? `${buttonSizePx(props)}px` : 'auto'};
+	${(props: Props) => isSquare(props) ? `min-width: ${buttonSizePx(props)}px;` : ''}
+	${(props: Props) => !isSquare(props) ? 'min-width: 100px;' : ''}
+	${(props: Props) => isSquare(props) ? `max-width: ${buttonSizePx(props)}px;` : ''}
 	box-sizing: border-box;
 	border-radius: 3px;
 	border-style: solid;
 	border-width: 1px;
-	/*font-size: ${(props: any) => props.theme.fontSize}px; */
-	padding: 0 ${(props: any) => props.iconOnly ? 4 : 14}px;
+	padding: 0 ${(props: Props) => isSquare(props) ? 4 : 14}px;
 	justify-content: center;
-	opacity: ${(props: any) => props.disabled ? 0.5 : 1};
+	opacity: ${(props: Props) => props.disabled ? 0.5 : 1};
 	user-select: none;
+	${(props: Props) => props.fontSize ? `font-size: ${props.fontSize}px;` : ''}
 `;
 
 const StyledIcon = styled(styled.span(space))`
@@ -200,7 +207,7 @@ function buttonClass(level: ButtonLevel) {
 	return StyledButtonSecondary;
 }
 
-function Button(props: Props) {
+const Button = React.forwardRef((props: Props, ref: any) => {
 	const iconOnly = props.iconName && !props.title;
 
 	const StyledButton = buttonClass(props.level);
@@ -221,11 +228,11 @@ function Button(props: Props) {
 	}
 
 	return (
-		<StyledButton size={props.size} style={props.style} disabled={props.disabled} title={props.tooltip} className={props.className} iconOnly={iconOnly} onClick={onClick}>
+		<StyledButton ref={ref} fontSize={props.fontSize} isSquare={props.isSquare} size={props.size} style={props.style} disabled={props.disabled} title={props.tooltip} className={props.className} iconOnly={iconOnly} onClick={onClick}>
 			{renderIcon()}
 			{renderTitle()}
 		</StyledButton>
 	);
-}
+});
 
 export default styled(Button)`${space}`;

@@ -34,9 +34,9 @@ export async function createTestUsers(db: DbConnection, config: Config, options:
 
 	const password = 'hunter1hunter2hunter3';
 
-	if (options.count) {
-		const models = newModelFactory(db, config);
+	const models = newModelFactory(db, config);
 
+	if (options.count) {
 		const users: User[] = [];
 
 		for (let i = 0; i < options.count; i++) {
@@ -52,7 +52,6 @@ export async function createTestUsers(db: DbConnection, config: Config, options:
 	} else {
 		await dropTables(db);
 		await migrateLatest(db);
-		const models = newModelFactory(db, config);
 
 		for (let userNum = 1; userNum <= 2; userNum++) {
 			await models.user().save({

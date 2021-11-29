@@ -5,7 +5,7 @@ import { _ } from '@joplin/lib/locale';
 import time from '@joplin/lib/time';
 import shim from '@joplin/lib/shim';
 import dialogs from '../dialogs';
-import { decryptedStatText, dontReencryptData, enableEncryptionConfirmationMessages, onSavePasswordClick, onToggleEnabledClick, reencryptData, upgradeMasterKey, useInputPasswords, useNeedMasterPassword, usePasswordChecker, useStats, useToggleShowDisabledMasterKeys } from '@joplin/lib/components/EncryptionConfigScreen/utils';
+import { decryptedStatText, determineKeyPassword, dontReencryptData, enableEncryptionConfirmationMessages, onSavePasswordClick, onToggleEnabledClick, reencryptData, upgradeMasterKey, useInputPasswords, useNeedMasterPassword, usePasswordChecker, useStats, useToggleShowDisabledMasterKeys } from '@joplin/lib/components/EncryptionConfigScreen/utils';
 import { MasterKeyEntity } from '@joplin/lib/services/e2ee/types';
 import { getEncryptionEnabled, masterKeyEnabled, SyncInfo } from '@joplin/lib/services/synchronizer/syncInfoUtils';
 import { getDefaultMasterKey, getMasterPasswordStatusMessage, masterPasswordIsValid, toggleAndSetupEncryption } from '@joplin/lib/services/e2ee/utils';
@@ -41,9 +41,11 @@ const EncryptionConfigScreen = (props: Props) => {
 	const { showDisabledMasterKeys, toggleShowDisabledMasterKeys } = useToggleShowDisabledMasterKeys();
 	const needMasterPassword = useNeedMasterPassword(passwordChecks, props.masterKeys);
 
-	const onUpgradeMasterKey = useCallback((mk: MasterKeyEntity) => {
-		void upgradeMasterKey(mk, passwordChecks, props.passwords);
-	}, [passwordChecks, props.passwords]);
+	const onUpgradeMasterKey = useCallback(async (mk: MasterKeyEntity) => {
+		const password = determineKeyPassword(mk.id, masterPasswordKeys, props.masterPassword, props.passwords);
+		const result = await upgradeMasterKey(mk, password);
+		alert(result);
+	}, [props.passwords, masterPasswordKeys, props.masterPassword]);
 
 	const renderNeedUpgradeSection = () => {
 		if (!shim.isElectron()) return null;
@@ -167,7 +169,7 @@ const EncryptionConfigScreen = (props: Props) => {
 			mkComps.push(renderMasterKey(mk));
 		}
 
-		const headerComp = isEnabledMasterKeys ? <h2>{_('Encryption Keys')}</h2> : <a onClick={() => toggleShowDisabledMasterKeys() } style={{ ...theme.urlStyle, display: 'inline-block', marginBottom: 10 }} href="#">{showTable ? _('Hide disabled keys') : _('Show disabled keys')}</a>;
+		const headerComp = isEnabledMasterKeys ? <h2>{_('Encryption keys')}</h2> : <a onClick={() => toggleShowDisabledMasterKeys() } style={{ ...theme.urlStyle, display: 'inline-block', marginBottom: 10 }} href="#">{showTable ? _('Hide disabled keys') : _('Show disabled keys')}</a>;
 		const infoComp: any = null; // isEnabledMasterKeys ? <p>{'Note: Only one key is going to be used for encryption (the one marked as "active"). Any of the keys might be used for decryption, depending on how the notes or notebooks were originally encrypted.'}</p> : null;
 		const tableComp = !showTable ? null : (
 			<table>
@@ -247,7 +249,7 @@ const EncryptionConfigScreen = (props: Props) => {
 						{_('Encryption:')} <strong>{props.encryptionEnabled ? _('Enabled') : _('Disabled')}</strong>
 					</p>
 					<p>
-						{_('Public-Private Key Pair:')} <strong>{props.ppk ? _('Generated') : _('Not generated')}</strong>
+						{_('Public-private key pair:')} <strong>{props.ppk ? _('Generated') : _('Not generated')}</strong>
 					</p>
 					{decryptedItemsInfo}
 					{toggleButton}
@@ -319,7 +321,7 @@ const EncryptionConfigScreen = (props: Props) => {
 
 			nonExistingMasterKeySection = (
 				<div className="section">
-					<h2>{_('Missing Keys')}</h2>
+					<h2>{_('Missing keys')}</h2>
 					<p>{_('The keys with these IDs are used to encrypt some of your items, however the application does not currently have access to them. It is likely they will eventually be downloaded via synchronisation.')}</p>
 					<table>
 						<tbody>

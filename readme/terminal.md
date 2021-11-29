@@ -131,9 +131,20 @@ For WebDAV-compatible services that are known to work with Joplin see [WebDAV sy
 
 ## Dropbox synchronisation
 
+You will need to set the `sync.target` config variable from the command line mode using:
+
+	:config sync.target 7
+
 When syncing with Dropbox, Joplin creates a sub-directory in Dropbox, in `/Apps/Joplin` and read/write the notes and notebooks from it. The application does not have access to anything outside this directory.
 
 To initiate the synchronisation process, type `:sync`. You will be asked to follow a link to authorise the application.
+
+## Local filesystem synchronisation
+
+Local filesystem sync can be initiated after starting the joplin terminal app by using the [command-line mode](#command-line-mode)
+
+	:config sync.target 2
+	:config sync.2.path <path to local sync dir>
 
 ## OneDrive synchronisation
 
@@ -292,7 +303,7 @@ The following commands are available in [command-line mode](#command-line-mode):
 	Possible keys/values:
 
 	    sync.target                    Synchronisation target.
-	                                   The target to synchonise to. Each sync
+	                                   The target to synchronise to. Each sync
 	                                   target may have additional parameters which
 	                                   are named as `sync.NUM.NAME` (all
 	                                   documented below).

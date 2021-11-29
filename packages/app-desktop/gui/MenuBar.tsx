@@ -136,7 +136,8 @@ function useMenuStates(menu: any, props: Props) {
 					menuItemSetChecked(`sort:${type}:${field}`, (props as any)[`${type}.sortOrder.field`] === field);
 				}
 
-				menuItemSetChecked(`sort:${type}:reverse`, (props as any)[`${type}.sortOrder.reverse`]);
+				const id = type == 'notes' ? 'toggleNotesSortOrderReverse' : `sort:${type}:reverse`;
+				menuItemSetChecked(id, (props as any)[`${type}.sortOrder.reverse`]);
 			}
 
 			applySortItemCheckState('notes');
@@ -180,11 +181,11 @@ function useMenu(props: Props) {
 		let path = null;
 
 		if (moduleSource === 'file') {
-			path = bridge().showOpenDialog({
+			path = await bridge().showOpenDialog({
 				filters: [{ name: module.description, extensions: module.fileExtensions }],
 			});
 		} else {
-			path = bridge().showOpenDialog({
+			path = await bridge().showOpenDialog({
 				properties: ['openDirectory', 'createDirectory'],
 			});
 		}
@@ -267,22 +268,33 @@ function useMenu(props: Props) {
 						type: 'checkbox',
 						// checked: Setting.value(`${type}.sortOrder.field`) === field,
 						click: () => {
-							Setting.setValue(`${type}.sortOrder.field`, field);
+							if (type === 'notes') {
+								void CommandService.instance().execute('toggleNotesSortOrderField', field);
+							} else {
+								Setting.setValue(`${type}.sortOrder.field`, field);
+							}
 						},
 					});
 				}
 
 				sortItems.push({ type: 'separator' });
 
-				sortItems.push({
-					id: `sort:${type}:reverse`,
-					label: Setting.settingMetadata(`${type}.sortOrder.reverse`).label(),
-					type: 'checkbox',
-					// checked: Setting.value(`${type}.sortOrder.reverse`),
-					click: () => {
-						Setting.setValue(`${type}.sortOrder.reverse`, !Setting.value(`${type}.sortOrder.reverse`));
-					},
-				});
+				if (type == 'notes') {
+					sortItems.push(
+						{ ...menuItemDic.toggleNotesSortOrderReverse, type: 'checkbox' },
+						{ ...menuItemDic.toggleNotesSortOrderField, visible: false }
+					);
+				} else {
+					sortItems.push({
+						id: `sort:${type}:reverse`,
+						label: Setting.settingMetadata(`${type}.sortOrder.reverse`).label(),
+						type: 'checkbox',
+						// checked: Setting.value(`${type}.sortOrder.reverse`),
+						click: () => {
+							Setting.setValue(`${type}.sortOrder.reverse`, !Setting.value(`${type}.sortOrder.reverse`));
+						},
+					});
+				}
 
 				return sortItems;
 			};

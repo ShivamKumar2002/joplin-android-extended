@@ -11,6 +11,7 @@ import * as newNote from './newNote';
 import * as newSubFolder from './newSubFolder';
 import * as newTodo from './newTodo';
 import * as openFolder from './openFolder';
+import * as openFolderDialog from './openFolderDialog';
 import * as openNote from './openNote';
 import * as openTag from './openTag';
 import * as print from './print';
@@ -28,6 +29,9 @@ import * as showSpellCheckerMenu from './showSpellCheckerMenu';
 import * as toggleEditors from './toggleEditors';
 import * as toggleLayoutMoveMode from './toggleLayoutMoveMode';
 import * as toggleNoteList from './toggleNoteList';
+import * as toggleNotesSortOrderField from './toggleNotesSortOrderField';
+import * as toggleNotesSortOrderReverse from './toggleNotesSortOrderReverse';
+import * as togglePerFolderSortOrder from './togglePerFolderSortOrder';
 import * as toggleSideBar from './toggleSideBar';
 import * as toggleVisiblePanes from './toggleVisiblePanes';
 
@@ -44,6 +48,7 @@ const index:any[] = [
 	newSubFolder,
 	newTodo,
 	openFolder,
+	openFolderDialog,
 	openNote,
 	openTag,
 	print,
@@ -61,6 +66,9 @@ const index:any[] = [
 	toggleEditors,
 	toggleLayoutMoveMode,
 	toggleNoteList,
+	toggleNotesSortOrderField,
+	toggleNotesSortOrderReverse,
+	togglePerFolderSortOrder,
 	toggleSideBar,
 	toggleVisiblePanes,
 ];

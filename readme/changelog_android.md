@@ -1,5 +1,40 @@
 # Joplin Android app changelog
 
+## [android-v2.6.3](https://github.com/laurent22/joplin/releases/tag/android-v2.6.3) (Pre-release) - 2021-11-21T16:59:46Z
+
+- New: Add date format YYYY/MM/DD (#5759 by Helmut K. C. Tessarek)
+- New: Add support for faster built-in sync locks (#5662)
+- New: Add support for sharing notes when E2EE is enabled (#5529)
+- New: Added support for notebook icons (e97bb78)
+- Improved: Improved error message when synchronising with Joplin Server (#5754)
+- Improved: Makes it impossible to have multiple instances of the app open (#5587 by Filip Stanis)
+- Improved: Remove non-OSS dependencies (#5735 by [@muelli](https://github.com/muelli))
+- Fixed: Fixed issue that could cause application to needlessly lock the sync target (0de6e9e)
+- Fixed: Fixed issue with parts of HTML notes not being displayed in some cases (#5687)
+- Fixed: Sharing multiple notebooks via Joplin Server with the same user results in an error (#5721)
+
+## [android-v2.6.1](https://github.com/laurent22/joplin/releases/tag/android-v2.6.1) (Pre-release) - 2021-11-02T20:49:53Z
+
+- Improved: Upgraded React Native from 0.64 to 0.66 (66e79cc)
+- Fixed: Fixed potential infinite loop when Joplin Server session is invalid (c5569ef)
+
+## [android-v2.5.5](https://github.com/laurent22/joplin/releases/tag/android-v2.5.5) (Pre-release) - 2021-10-31T11:03:16Z
+
+- New: Add padding around beta text editor (365e152)
+- Improved: Capitalise first word of sentence in beta editor (4128be9)
+- Fixed: Do not render very large code blocks to prevent app from freezing (#5593)
+
+## [android-v2.5.3](https://github.com/laurent22/joplin/releases/tag/android-v2.5.3) (Pre-release) - 2021-10-28T21:47:18Z
+
+- New: Add support for public-private key pairs and improved master password support (#5438)
+- New: Added mechanism to migrate default settings to new values (72db8e4)
+- Improved: Ensure that shared notebook children are not deleted when shared, unshared and shared again, and a conflict happens (ccf9882)
+- Improved: Improve delete dialog message (#5481) (#4701 by Helmut K. C. Tessarek)
+- Improved: Improved Joplin Server configuration check to better handle disabled accounts (72c1235)
+- Improved: Improved handling of expired sessions when using Joplin Server (33249ca)
+- Fixed: Certain attachments were not being automatically deleted (#932)
+- Fixed: Fixed logic of setting master password in Encryption screen (#5585)
+
 ## [android-v2.4.3](https://github.com/laurent22/joplin/releases/tag/android-v2.4.3) - 2021-09-29T18:47:24Z
 
 - Fixed: Fix default sync target (4b39d30)

@@ -20,6 +20,7 @@ import Logger from '@joplin/lib/Logger';
 import { FolderEntity } from '@joplin/lib/services/database/types';
 import stateToWhenClauseContext from '../../services/commands/stateToWhenClauseContext';
 import { store } from '@joplin/lib/reducer';
+import PerFolderSortOrderService from '../../services/sortOrder/PerFolderSortOrderService';
 import { getFolderCallbackUrl, getTagCallbackUrl } from '@joplin/lib/callbackUrlUtils';
 const { connect } = require('react-redux');
 const shared = require('@joplin/lib/components/shared/side-menu-shared.js');
@@ -77,11 +78,13 @@ function ExpandLink(props: any) {
 }
 
 function FolderItem(props: any) {
-	const { hasChildren, isExpanded, parentId, depth, selected, folderId, folderTitle, anchorRef, noteCount, onFolderDragStart_, onFolderDragOver_, onFolderDrop_, itemContextMenu, folderItem_click, onFolderToggleClick_, shareId } = props;
+	const { hasChildren, isExpanded, parentId, depth, selected, folderId, folderTitle, folderIcon, anchorRef, noteCount, onFolderDragStart_, onFolderDragOver_, onFolderDrop_, itemContextMenu, folderItem_click, onFolderToggleClick_, shareId } = props;
 
 	const noteCountComp = noteCount ? <StyledNoteCount className="note-count-label">{noteCount}</StyledNoteCount> : null;
 
 	const shareIcon = shareId && !parentId ? <StyledShareIcon className="fas fa-share-alt"></StyledShareIcon> : null;
+
+	const icon = folderIcon ? <span style={{ fontSize: 20, marginRight: 5 }}>{folderIcon.emoji}</span> : null;
 
 	return (
 		<StyledListItem depth={depth} selected={selected} className={`list-item-container list-item-depth-${depth} ${selected ? 'selected' : ''}`} onDragStart={onFolderDragStart_} onDragOver={onFolderDragOver_} onDrop={onFolderDrop_} draggable={true} data-folder-id={folderId}>
@@ -102,7 +105,7 @@ function FolderItem(props: any) {
 				}}
 				onDoubleClick={onFolderToggleClick_}
 			>
-				<span className="title">{folderTitle}</span>
+				{icon}<span className="title" style={{ lineHeight: 0 }}>{folderTitle}</span>
 				{shareIcon} {noteCountComp}
 			</StyledListItemAnchor>
 		</StyledListItem>
@@ -291,7 +294,7 @@ class SidebarComponent extends React.Component<Props, State> {
 		);
 
 		if (itemType === BaseModel.TYPE_FOLDER && !item.encryption_applied) {
-			menu.append(new MenuItem(menuUtils.commandToStatefulMenuItem('renameFolder', itemId)));
+			menu.append(new MenuItem(menuUtils.commandToStatefulMenuItem('openFolderDialog', itemId)));
 
 			menu.append(new MenuItem({ type: 'separator' }));
 
@@ -332,6 +335,13 @@ class SidebarComponent extends React.Component<Props, State> {
 					submenu: exportMenu,
 				})
 			);
+			if (Setting.value('notes.perFolderSortOrderEnabled')) {
+				menu.append(new MenuItem({
+					...menuUtils.commandToStatefulMenuItem('togglePerFolderSortOrder', itemId),
+					type: 'checkbox',
+					checked: PerFolderSortOrderService.isSet(itemId),
+				}));
+			}
 		}
 
 		if (itemType === BaseModel.TYPE_FOLDER) {
@@ -456,6 +466,7 @@ class SidebarComponent extends React.Component<Props, State> {
 			key={folder.id}
 			folderId={folder.id}
 			folderTitle={Folder.displayTitle(folder)}
+			folderIcon={Folder.unserializeIcon(folder.icon)}
 			themeId={this.props.themeId}
 			depth={depth}
 			selected={selected}

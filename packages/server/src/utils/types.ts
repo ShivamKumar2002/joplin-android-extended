@@ -67,6 +67,7 @@ export interface DatabaseConfig {
 	asyncStackTraces?: boolean;
 	slowQueryLogEnabled?: boolean;
 	slowQueryLogMinDuration?: number;
+	autoMigration?: boolean;
 }
 
 export interface MailerConfig {
@@ -84,6 +85,48 @@ export interface StripeConfig extends StripePublicConfig {
 	enabled: boolean;
 	secretKey: string;
 	webhookSecret: string;
+}
+
+export enum StorageDriverType {
+	Database = 1,
+	Filesystem = 2,
+	Memory = 3,
+	S3 = 4,
+}
+
+// The driver mode is only used by fallback drivers. Regardless of the mode, the
+// fallback always work like this:
+//
+// When reading, first the app checks if the content exists on the main driver.
+// If it does it returns this. Otherwise it reads the content from the fallback
+// driver.
+//
+// When writing, the app writes to the main driver. Then the mode determines how
+// it writes to the fallback driver:
+//
+// - In ReadAndClear mode, it's going to clear the fallback driver content. This
+//   is used to migrate from one driver to another. It means that over time the
+//   old storage will be cleared and all content will be on the new storage.
+//
+// - In ReadAndWrite mode, it's going to write the content to the fallback
+//   driver too. This is purely for safey - it allows deploying the new storage
+//   (such as the filesystem or S3) but still keep the old content up-to-date.
+//   So if something goes wrong it's possible to go back to the old storage
+//   until the new one is working.
+
+export enum StorageDriverMode {
+	ReadAndWrite = 1,
+	ReadAndClear = 2,
+}
+
+export interface StorageDriverConfig {
+	type?: StorageDriverType;
+	path?: string;
+	mode?: StorageDriverMode;
+	region?: string;
+	accessKeyId?: string;
+	secretAccessKeyId?: string;
+	bucket?: string;
 }
 
 export interface Config {
@@ -114,6 +157,10 @@ export interface Config {
 	businessEmail: string;
 	isJoplinCloud: boolean;
 	cookieSecure: boolean;
+	storageDriver: StorageDriverConfig;
+	storageDriverFallback: StorageDriverConfig;
+	itemSizeHardLimit: number;
+	maxTimeDrift: number;
 }
 
 export enum HttpMethod {

@@ -1,5 +1,69 @@
 # Joplin Server Changelog
 
+## [server-v2.6.12](https://github.com/laurent22/joplin/releases/tag/server-v2.6.12) - 2021-11-23T16:30:27Z
+
+- New: Added task to compress changes older than 6 months (75f7296)
+- Improved: Allow specifying a max content size when importing content to new storage (080c3cc)
+- Improved: Check for time drift when the server starts (#5738)
+- Improved: Display more debug info in error log (3716972)
+- Improved: Display more detailed error messages on SQL query errors (42a4edb)
+- Improved: Perform storage checks before starting services (16d5047)
+- Fixed: Fixed HandleOversizedAccounts task interval (fc419d9)
+
+## [server-v2.6.11](https://github.com/laurent22/joplin/releases/tag/server-v2.6.11) - 2021-11-14T17:14:51Z
+
+- Improved: Prevent large data blobs from crashing the application (5eb3a92)
+
+## [server-v2.6.10](https://github.com/laurent22/joplin/releases/tag/server-v2.6.10) - 2021-11-13T12:47:53Z
+
+- Improved: Improved storage migration error handling, and improved storage test units (5a41d80)
+- Improved: Rename "ReadOnly" mode to "ReadAndClear" to avoid any confusion (5cd4537)
+
+## [server-v2.6.9](https://github.com/laurent22/joplin/releases/tag/server-v2.6.9) - 2021-11-11T16:38:00Z
+
+- Improved: Hide more credentials from the log (73137cf)
+- New: Added command to test a storage connection (c6dec0a)
+- New: Added command to migrate content to different storage (005f720)
+
+## [server-v2.6.5](https://github.com/laurent22/joplin/releases/tag/server-v2.6.5) - 2021-11-10T12:07:50Z
+
+- Improved: Allow storing item content in database, filesystem or S3 (depending on config) (#5602)
+
+## [server-v2.6.3](https://github.com/laurent22/joplin/releases/tag/server-v2.6.3) - 2021-11-08T15:20:41Z
+
+- New: Add support for sharing notes when E2EE is enabled (#5529)
+- Improved: Disable mailer service if no-reply email is not set (ce5c5d6)
+- Improved: Display latest migration name after auto-migration (7ad73df)
+- Improved: Immediately ask user to set password after Stripe checkout (9e1cb9d)
+- Improved: Set resource content size when viewing published note (70d5c7a)
+
+## [server-v2.6.2](https://github.com/laurent22/joplin/releases/tag/server-v2.6.2) - 2021-11-03T12:54:38Z
+
+- New: Add support for faster built-in sync locks (#5662)
+- Improved: Improved env variable handling to make it self documenting and enforce type checking (b5d792c)
+- Improved: Improved logging and rendering of low level middleware errors (3704413)
+
+## [server-v2.5.10](https://github.com/laurent22/joplin/releases/tag/server-v2.5.10) - 2021-11-02T14:45:54Z
+
+- New: Add unique constraint on name and owner ID of items table (f7a18ba)
+- Fixed: Fixed issue that could cause server to return empty items in some rare cases (99ea4b7)
+
+## [server-v2.5.9](https://github.com/laurent22/joplin/releases/tag/server-v2.5.9) - 2021-10-28T19:43:41Z
+
+- Improved: Remove session expiration for now (4a2af32)
+
+## [server-v2.5.8](https://github.com/laurent22/joplin/releases/tag/server-v2.5.8) - 2021-10-28T16:07:23Z
+
+- New: Added item owner ID, and allow disabling db auto-migrations (b655f27)
+- Fixed: Fixed Stripe portal page redirection (9ba90b5)
+- Fixed: Fixed items.owner_id migration (a753429)
+- Fixed: Fixed display of latest migration in startup log (#5627 by [@KowalskiPiotr98](https://github.com/KowalskiPiotr98))
+- Improved: Moved CLI commands to separate files (dca13b3)
+- Improved: Delete all sessions when a password is changed or reset (b497177)
+- Improved: Expire sessions after 12 hours (0ada1df)
+- Improved: Improved task service log entries (bc5a853)
+- Improved: Run oversized account task more frequently (2f09f88)
+
 ## [server-v2.5.5](https://github.com/laurent22/joplin/releases/tag/server-v2.5.5) - 2021-10-23T20:58:37Z
 
 - New: Added tool to delete old changes (169b585)

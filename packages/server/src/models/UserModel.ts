@@ -15,6 +15,7 @@ import resetPasswordTemplate from '../views/emails/resetPasswordTemplate';
 import { betaStartSubUrl, betaUserDateRange, betaUserTrialPeriodDays, isBetaUser, stripeConfig } from '../utils/stripe';
 import endOfBetaTemplate from '../views/emails/endOfBetaTemplate';
 import Logger from '@joplin/lib/Logger';
+import { PublicPrivateKeyPair } from '@joplin/lib/services/e2ee/ppk';
 import paymentFailedUploadDisabledTemplate from '../views/emails/paymentFailedUploadDisabledTemplate';
 import oversizedAccount1 from '../views/emails/oversizedAccount1';
 import oversizedAccount2 from '../views/emails/oversizedAccount2';
@@ -25,6 +26,7 @@ import paymentFailedAccountDisabledTemplate from '../views/emails/paymentFailedA
 import changeEmailConfirmationTemplate from '../views/emails/changeEmailConfirmationTemplate';
 import changeEmailNotificationTemplate from '../views/emails/changeEmailNotificationTemplate';
 import { NotificationKey } from './NotificationModel';
+import prettyBytes = require('pretty-bytes');
 
 const logger = Logger.create('UserModel');
 
@@ -196,6 +198,17 @@ export default class UserModel extends BaseModel<User> {
 
 		const maxItemSize = getMaxItemSize(user);
 		const maxSize = maxItemSize * (itemIsEncrypted(item) ? 2.2 : 1);
+
+		if (itemSize > 200000000) {
+			logger.info(`Trying to upload large item: ${JSON.stringify({
+				userId: user.id,
+				itemName: item.name,
+				itemSize,
+				maxItemSize,
+				maxSize,
+			}, null, '    ')}`);
+		}
+
 		if (maxSize && itemSize > maxSize) {
 			throw new ErrorPayloadTooLarge(_('Cannot save %s "%s" because it is larger than the allowed limit (%s)',
 				isNote ? _('note') : _('attachment'),
@@ -203,6 +216,8 @@ export default class UserModel extends BaseModel<User> {
 				formatBytes(maxItemSize)
 			));
 		}
+
+		if (itemSize > this.itemSizeHardLimit) throw new ErrorPayloadTooLarge(`Uploading items larger than ${prettyBytes(this.itemSizeHardLimit)} is currently disabled`);
 
 		// We allow lock files to go through so that sync can happen, which in
 		// turns allow user to fix oversized account by deleting items.
@@ -581,6 +596,18 @@ export default class UserModel extends BaseModel<User> {
 		const output: User = { ...user };
 		if ('email' in output) output.email = (`${user.email}`).trim().toLowerCase();
 		return output;
+	}
+
+	private async syncInfo(userId: Uuid): Promise<any> {
+		const item = await this.models().item().loadByName(userId, 'info.json');
+		if (!item) throw new Error('Cannot find info.json file');
+		const withContent = await this.models().item().loadWithContent(item.id);
+		return JSON.parse(withContent.content.toString());
+	}
+
+	public async publicPrivateKey(userId: string): Promise<PublicPrivateKeyPair> {
+		const syncInfo = await this.syncInfo(userId);
+		return syncInfo.ppk?.value || null;
 	}
 
 	// Note that when the "password" property is provided, it is going to be

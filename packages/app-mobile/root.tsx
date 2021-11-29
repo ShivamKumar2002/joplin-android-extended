@@ -506,9 +506,9 @@ async function initialize(dispatch: Function) {
 			Setting.setValue('sync.10.path', 'http://api.joplincloud.local:22300');
 			Setting.setValue('sync.10.userContentPath', 'http://joplinusercontent.local:22300');
 
-			Setting.setValue('sync.target', 10);
-			Setting.setValue('sync.10.username', 'user1@example.com');
-			Setting.setValue('sync.10.password', 'hunter1hunter2hunter3');
+			// Setting.setValue('sync.target', 10);
+			// Setting.setValue('sync.10.username', 'user1@example.com');
+			// Setting.setValue('sync.10.password', 'hunter1hunter2hunter3');
 		}
 
 		if (Setting.value('db.ftsEnabled') === -1) {
@@ -562,7 +562,7 @@ async function initialize(dispatch: Function) {
 		// / E2EE SETUP
 		// ----------------------------------------------------------------
 
-		await ShareService.instance().initialize(store);
+		await ShareService.instance().initialize(store, EncryptionService.instance());
 
 		reg.logger().info('Loading folders...');
 

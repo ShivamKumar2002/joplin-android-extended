@@ -58,6 +58,7 @@ const commands = mainScreenCommands
 const globalCommands = appCommands.concat(libCommands);
 
 import editorCommandDeclarations from './gui/NoteEditor/editorCommandDeclarations';
+import PerFolderSortOrderService from './services/sortOrder/PerFolderSortOrderService';
 import ShareService from '@joplin/lib/services/share/ShareService';
 import checkForUpdates from './checkForUpdates';
 import { AppState } from './app.reducer';
@@ -388,6 +389,8 @@ class Application extends BaseApplication {
 
 		this.initRedux();
 
+		PerFolderSortOrderService.initialize();
+
 		CommandService.instance().initialize(this.store(), Setting.value('env') == 'dev', stateToWhenClauseContext);
 
 		for (const command of commands) {
@@ -558,11 +561,11 @@ class Application extends BaseApplication {
 		// 	});
 		// }, 2000);
 
-
 		// setTimeout(() => {
 		// 	this.dispatch({
 		// 		type: 'DIALOG_OPEN',
-		// 		name: 'masterPassword',
+		// 		name: 'editFolder',
+		// 		props: { folderId: '3d90f7da26b947dc9c8c6c65e86cd231' },
 		// 	});
 		// }, 2000);
 

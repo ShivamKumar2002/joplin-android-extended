@@ -33,7 +33,18 @@ export default async function(ctx: AppContext) {
 		}
 	} catch (error) {
 		if (error.httpCode >= 400 && error.httpCode < 500) {
-			ctx.joplin.appLogger().error(`${error.httpCode}: ` + `${ctx.request.method} ${ctx.path}` + `: ${userIp(ctx)}: ${error.message}`);
+			const owner = ctx.joplin.owner;
+
+			const line: string[] = [
+				error.httpCode,
+				`${ctx.request.method} ${ctx.path}`,
+				owner ? owner.id : userIp(ctx),
+				error.message,
+			];
+
+			if (error.details) line.push(JSON.stringify(error.details));
+
+			ctx.joplin.appLogger().error(line.join(': '));
 		} else {
 			ctx.joplin.appLogger().error(userIp(ctx), error);
 		}
@@ -73,6 +84,6 @@ export default async function(ctx: AppContext) {
 		// Technically this is not the total request duration because there are
 		// other middlewares but that should give a good approximation
 		const requestDuration = Date.now() - requestStartTime;
-		ctx.joplin.appLogger().info(`${ctx.request.method} ${ctx.path} (${requestDuration}ms)`);
+		ctx.joplin.appLogger().info(`${ctx.request.method} ${ctx.path} (${ctx.response.status}) (${requestDuration}ms)`);
 	}
 }

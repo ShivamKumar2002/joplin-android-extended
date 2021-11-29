@@ -3,15 +3,29 @@ import { ItemType, databaseSchema, Uuid, Item, ShareType, Share, ChangeType, Use
 import { defaultPagination, paginateDbQuery, PaginatedResults, Pagination } from './utils/pagination';
 import { isJoplinItemName, isJoplinResourceBlobPath, linkedResourceIds, serializeJoplinItem, unserializeJoplinItem } from '../utils/joplinUtils';
 import { ModelType } from '@joplin/lib/BaseModel';
-import { ApiError, ErrorForbidden, ErrorUnprocessableEntity } from '../utils/errors';
+import { ApiError, ErrorCode, ErrorForbidden, ErrorPayloadTooLarge, ErrorUnprocessableEntity } from '../utils/errors';
 import { Knex } from 'knex';
 import { ChangePreviousItem } from './ChangeModel';
 import { unique } from '../utils/array';
+import StorageDriverBase, { Context } from './items/storage/StorageDriverBase';
+import { DbConnection, returningSupported } from '../db';
+import { Config, StorageDriverConfig, StorageDriverMode } from '../utils/types';
+import { NewModelFactoryHandler } from './factory';
+import loadStorageDriver from './items/storage/loadStorageDriver';
+import { msleep } from '../utils/time';
+import Logger, { LoggerWrapper } from '@joplin/lib/Logger';
+import prettyBytes = require('pretty-bytes');
 
 const mimeUtils = require('@joplin/lib/mime-utils.js').mime;
 
 // Converts "root:/myfile.txt:" to "myfile.txt"
 const extractNameRegex = /^root:\/(.*):$/;
+
+export interface ImportContentToStorageOptions {
+	batchSize?: number;
+	maxContentSize?: number;
+	logger?: Logger | LoggerWrapper;
+}
 
 export interface SaveFromRawContentItem {
 	name: string;
@@ -38,9 +52,24 @@ export interface ItemSaveOption extends SaveOptions {
 	shareId?: Uuid;
 }
 
+export interface ItemLoadOptions extends LoadOptions {
+	withContent?: boolean;
+}
+
 export default class ItemModel extends BaseModel<Item> {
 
 	private updatingTotalSizes_: boolean = false;
+	private storageDriverConfig_: StorageDriverConfig;
+	private storageDriverConfigFallback_: StorageDriverConfig;
+
+	private static storageDrivers_: Map<StorageDriverConfig, StorageDriverBase> = new Map();
+
+	public constructor(db: DbConnection, modelFactory: NewModelFactoryHandler, config: Config) {
+		super(db, modelFactory, config);
+
+		this.storageDriverConfig_ = config.storageDriver;
+		this.storageDriverConfigFallback_ = config.storageDriverFallback;
+	}
 
 	protected get tableName(): string {
 		return 'items';
@@ -56,6 +85,26 @@ export default class ItemModel extends BaseModel<Item> {
 
 	protected get defaultFields(): string[] {
 		return Object.keys(databaseSchema[this.tableName]).filter(f => f !== 'content');
+	}
+
+	private async loadStorageDriver(config: StorageDriverConfig): Promise<StorageDriverBase> {
+		let driver = ItemModel.storageDrivers_.get(config);
+
+		if (!driver) {
+			driver = await loadStorageDriver(config, this.db);
+			ItemModel.storageDrivers_.set(config, driver);
+		}
+
+		return driver;
+	}
+
+	public async storageDriver(): Promise<StorageDriverBase> {
+		return this.loadStorageDriver(this.storageDriverConfig_);
+	}
+
+	public async storageDriverFallback(): Promise<StorageDriverBase> {
+		if (!this.storageDriverConfigFallback_) return null;
+		return this.loadStorageDriver(this.storageDriverConfigFallback_);
 	}
 
 	public async checkIfAllowed(user: User, action: AclAction, resource: Item = null): Promise<void> {
@@ -106,62 +155,118 @@ export default class ItemModel extends BaseModel<Item> {
 		return path.replace(extractNameRegex, '$1');
 	}
 
-	public byShareIdQuery(shareId: Uuid, options: LoadOptions = {}): Knex.QueryBuilder {
+	public byShareIdQuery(shareId: Uuid, options: ItemLoadOptions = {}): Knex.QueryBuilder {
 		return this
 			.db('items')
 			.select(this.selectFields(options, null, 'items'))
 			.where('jop_share_id', '=', shareId);
 	}
 
-	public async byShareId(shareId: Uuid, options: LoadOptions = {}): Promise<Item[]> {
+	public async byShareId(shareId: Uuid, options: ItemLoadOptions = {}): Promise<Item[]> {
 		const query = this.byShareIdQuery(shareId, options);
 		return await query;
 	}
 
-	public async loadByJopIds(userId: Uuid | Uuid[], jopIds: string[], options: LoadOptions = {}): Promise<Item[]> {
+	private async storageDriverWrite(itemId: Uuid, content: Buffer, context: Context) {
+		const storageDriver = await this.storageDriver();
+		const storageDriverFallback = await this.storageDriverFallback();
+
+		await storageDriver.write(itemId, content, context);
+
+		if (storageDriverFallback) {
+			if (storageDriverFallback.mode === StorageDriverMode.ReadAndWrite) {
+				await storageDriverFallback.write(itemId, content, context);
+			} else if (storageDriverFallback.mode === StorageDriverMode.ReadAndClear) {
+				await storageDriverFallback.write(itemId, Buffer.from(''), context);
+			} else {
+				throw new Error(`Unsupported fallback mode: ${storageDriverFallback.mode}`);
+			}
+		}
+	}
+
+	private async storageDriverRead(itemId: Uuid, itemSize: number, context: Context) {
+		if (itemSize > this.itemSizeHardLimit) {
+			throw new ErrorPayloadTooLarge(`Downloading items larger than ${prettyBytes(this.itemSizeHardLimit)} is currently disabled`);
+		}
+
+		const storageDriver = await this.storageDriver();
+		const storageDriverFallback = await this.storageDriverFallback();
+
+		if (await storageDriver.exists(itemId, context)) {
+			return storageDriver.read(itemId, context);
+		} else {
+			if (!storageDriverFallback) throw new Error(`Content does not exist but fallback content driver is not defined: ${itemId}`);
+			return storageDriverFallback.read(itemId, context);
+		}
+	}
+
+	public async loadByJopIds(userId: Uuid | Uuid[], jopIds: string[], options: ItemLoadOptions = {}): Promise<Item[]> {
 		if (!jopIds.length) return [];
 
 		const userIds = Array.isArray(userId) ? userId : [userId];
 		if (!userIds.length) return [];
 
-		return this
+		const rows: Item[] = await this
 			.db('user_items')
 			.leftJoin('items', 'items.id', 'user_items.item_id')
-			.distinct(this.selectFields(options, null, 'items'))
+			.distinct(this.selectFields(options, null, 'items', ['items.content_size']))
 			.whereIn('user_items.user_id', userIds)
 			.whereIn('jop_id', jopIds);
+
+		if (options.withContent) {
+			for (const row of rows) {
+				row.content = await this.storageDriverRead(row.id, row.content_size, { models: this.models() });
+			}
+		}
+
+		return rows;
 	}
 
-	public async loadByJopId(userId: Uuid, jopId: string, options: LoadOptions = {}): Promise<Item> {
+	public async loadByJopId(userId: Uuid, jopId: string, options: ItemLoadOptions = {}): Promise<Item> {
 		const items = await this.loadByJopIds(userId, [jopId], options);
 		return items.length ? items[0] : null;
 	}
 
-	public async loadByNames(userId: Uuid | Uuid[], names: string[], options: LoadOptions = {}): Promise<Item[]> {
+	public async loadByNames(userId: Uuid | Uuid[], names: string[], options: ItemLoadOptions = {}): Promise<Item[]> {
 		if (!names.length) return [];
 
 		const userIds = Array.isArray(userId) ? userId : [userId];
 
-		return this
+		const rows: Item[] = await this
 			.db('user_items')
 			.leftJoin('items', 'items.id', 'user_items.item_id')
-			.distinct(this.selectFields(options, null, 'items'))
+			.distinct(this.selectFields(options, null, 'items', ['items.content_size']))
 			.whereIn('user_items.user_id', userIds)
 			.whereIn('name', names);
+
+		if (options.withContent) {
+			for (const row of rows) {
+				row.content = await this.storageDriverRead(row.id, row.content_size, { models: this.models() });
+			}
+		}
+
+		return rows;
 	}
 
-	public async loadByName(userId: Uuid, name: string, options: LoadOptions = {}): Promise<Item> {
+	public async loadByName(userId: Uuid, name: string, options: ItemLoadOptions = {}): Promise<Item> {
 		const items = await this.loadByNames(userId, [name], options);
 		return items.length ? items[0] : null;
 	}
 
-	public async loadWithContent(id: Uuid, options: LoadOptions = {}): Promise<Item> {
-		return this
+	public async loadWithContent(id: Uuid, options: ItemLoadOptions = {}): Promise<Item> {
+		const item: Item = await this
 			.db('user_items')
 			.leftJoin('items', 'items.id', 'user_items.item_id')
-			.select(this.selectFields(options, ['*'], 'items'))
+			.select(this.selectFields(options, ['*'], 'items', ['items.content_size']))
 			.where('items.id', '=', id)
 			.first();
+
+		const content = await this.storageDriverRead(id, item.content_size, { models: this.models() });
+
+		return {
+			...item,
+			content,
+		};
 	}
 
 	public async loadAsSerializedJoplinItem(id: Uuid): Promise<string> {
@@ -175,6 +280,117 @@ export default class ItemModel extends BaseModel<Item> {
 			return Buffer.from(await serializeJoplinItem(this.itemToJoplinItem(item)));
 		} else {
 			return item.content;
+		}
+	}
+
+	private async atomicMoveContent(item: Item, toDriver: StorageDriverBase, drivers: Record<number, StorageDriverBase>, logger: Logger | LoggerWrapper) {
+		for (let i = 0; i < 10; i++) {
+			let fromDriver: StorageDriverBase = drivers[item.content_storage_id];
+
+			if (!fromDriver) {
+				fromDriver = await loadStorageDriver(item.content_storage_id, this.db);
+				drivers[item.content_storage_id] = fromDriver;
+			}
+
+			let content = null;
+
+			try {
+				content = await fromDriver.read(item.id, { models: this.models() });
+			} catch (error) {
+				if (error.code === ErrorCode.NotFound) {
+					logger.info(`Could not process item, because content was deleted: ${item.id}`);
+					return;
+				}
+				throw error;
+			}
+
+			await toDriver.write(item.id, content, { models: this.models() });
+
+			const updatedRows = await this
+				.db(this.tableName)
+				.where('id', '=', item.id)
+				.where('updated_time', '=', item.updated_time) // Check that the row hasn't changed while we were transferring the content
+				.update({ content_storage_id: toDriver.storageId }, returningSupported(this.db) ? ['id'] : undefined);
+
+			// The item has been updated so we can return. Note that if the
+			// database does not support RETURNING statement (like SQLite) we
+			// have no way to check so we assume it's been done.
+			if (!returningSupported(this.db) || updatedRows.length) return;
+
+			// If the row hasn't been updated, check that the item still exists
+			// (that it didn't get deleted while we were uploading the content).
+			const reloadedItem = await this.load(item.id, { fields: ['id'] });
+			if (!reloadedItem) {
+				// Item was deleted so we remove the content we've just
+				// uploaded.
+				logger.info(`Could not process item, because it was deleted: ${item.id}`);
+				await toDriver.delete(item.id, { models: this.models() });
+				return;
+			}
+
+			await msleep(1000 + 1000 * i);
+		}
+
+		throw new Error(`Could not atomically update content for item: ${JSON.stringify(item)}`);
+	}
+
+	// Loop throught the items in the database and import their content to the
+	// target storage. Only items not already in that storage will be processed.
+	public async importContentToStorage(toStorageConfig: StorageDriverConfig | StorageDriverBase, options: ImportContentToStorageOptions = null) {
+		options = {
+			batchSize: 1000,
+			maxContentSize: 200000000,
+			logger: new Logger(),
+			...options,
+		};
+
+		const toStorageDriver = toStorageConfig instanceof StorageDriverBase ? toStorageConfig : await this.loadStorageDriver(toStorageConfig);
+		const fromDrivers: Record<number, StorageDriverBase> = {};
+
+		const itemCount = (await this.db(this.tableName)
+			.count('id', { as: 'total' })
+			.where('content_storage_id', '!=', toStorageDriver.storageId)
+			.first())['total'];
+
+		const skippedItemIds: Uuid[] = [];
+
+		let totalDone = 0;
+
+		while (true) {
+			const query = this
+				.db(this.tableName)
+				.select(['id', 'content_storage_id', 'content_size', 'updated_time'])
+				.where('content_storage_id', '!=', toStorageDriver.storageId);
+
+			if (skippedItemIds.length) void query.whereNotIn('id', skippedItemIds);
+
+			void query.limit(options.batchSize);
+
+			const items: Item[] = await query;
+
+			options.logger.info(`Processing items ${totalDone} / ${itemCount}`);
+
+			if (!items.length) {
+				options.logger.info(`All items have been processed. Total: ${totalDone}`);
+				options.logger.info(`Skipped items: ${skippedItemIds.join(', ')}`);
+				return;
+			}
+
+			for (const item of items) {
+				if (item.content_size > options.maxContentSize) {
+					options.logger.warn(`Skipped item "${item.id}" (Size: ${prettyBytes(item.content_size)}) because it is over the size limit (${prettyBytes(options.maxContentSize)})`);
+					skippedItemIds.push(item.id);
+					continue;
+				}
+
+				try {
+					await this.atomicMoveContent(item, toStorageDriver, fromDrivers, options.logger);
+				} catch (error) {
+					options.logger.error(error);
+				}
+			}
+
+			totalDone += items.length;
 		}
 	}
 
@@ -255,8 +471,10 @@ export default class ItemModel extends BaseModel<Item> {
 		return this.itemToJoplinItem(raw);
 	}
 
-	public async saveFromRawContent(user: User, rawContentItems: SaveFromRawContentItem[], options: ItemSaveOption = null): Promise<SaveFromRawContentResult> {
+	public async saveFromRawContent(user: User, rawContentItems: SaveFromRawContentItem[] | SaveFromRawContentItem, options: ItemSaveOption = null): Promise<SaveFromRawContentResult> {
 		options = options || {};
+
+		if (!Array.isArray(rawContentItems)) rawContentItems = [rawContentItems];
 
 		// In this function, first we process the input items, which may be
 		// serialized Joplin items or actual buffers (for resources) and convert
@@ -349,10 +567,46 @@ export default class ItemModel extends BaseModel<Item> {
 					continue;
 				}
 
-				const itemToSave = o.item;
+				const itemToSave = { ...o.item };
 
 				try {
+					const content = itemToSave.content;
+					delete itemToSave.content;
+
+					itemToSave.content_storage_id = (await this.storageDriver()).storageId;
+
+					itemToSave.content_size = content ? content.byteLength : 0;
+
+					// Here we save the item row and content, and we want to
+					// make sure that either both are saved or none of them.
+					// This is done by setting up a save point before saving the
+					// row, and rollbacking if the content cannot be saved.
+					//
+					// Normally, since we are in a transaction, throwing an
+					// error should work, but since we catch all errors within
+					// this block it doesn't work.
+
+					// TODO: When an item is uploaded multiple times
+					// simultaneously there could be a race condition, where the
+					// content would not match the db row (for example, the
+					// content_size would differ).
+					//
+					// Possible solutions:
+					//
+					// - Row-level lock on items.id, and release once the
+					//   content is saved.
+					// - Or external lock - eg. Redis.
+
+					const savePoint = await this.setSavePoint();
 					const savedItem = await this.saveForUser(user.id, itemToSave);
+
+					try {
+						await this.storageDriverWrite(savedItem.id, content, { models: this.models() });
+						await this.releaseSavePoint(savePoint);
+					} catch (error) {
+						await this.rollbackSavePoint(savePoint);
+						throw error;
+					}
 
 					if (o.isNote) {
 						await this.models().itemResource().deleteByItemId(savedItem.id);
@@ -390,10 +644,10 @@ export default class ItemModel extends BaseModel<Item> {
 	}
 
 
-	private childrenQuery(userId: Uuid, pathQuery: string = '', count: boolean = false, options: LoadOptions = {}): Knex.QueryBuilder {
+	private childrenQuery(userId: Uuid, pathQuery: string = '', count: boolean = false, options: ItemLoadOptions = {}): Knex.QueryBuilder {
 		const query = this
 			.db('user_items')
-			.leftJoin('items', 'user_items.item_id', 'items.id')
+			.innerJoin('items', 'user_items.item_id', 'items.id')
 			.where('user_items.user_id', '=', userId);
 
 		if (count) {
@@ -420,7 +674,7 @@ export default class ItemModel extends BaseModel<Item> {
 		return `${this.baseUrl}/items/${itemId}/content`;
 	}
 
-	public async children(userId: Uuid, pathQuery: string = '', pagination: Pagination = null, options: LoadOptions = {}): Promise<PaginatedItems> {
+	public async children(userId: Uuid, pathQuery: string = '', pagination: Pagination = null, options: ItemLoadOptions = {}): Promise<PaginatedItems> {
 		pagination = pagination || defaultPagination();
 		const query = this.childrenQuery(userId, pathQuery, false, options);
 		return paginateDbQuery(query, pagination, 'items');
@@ -526,12 +780,17 @@ export default class ItemModel extends BaseModel<Item> {
 		const ids = typeof id === 'string' ? [id] : id;
 		if (!ids.length) return;
 
+		const storageDriver = await this.storageDriver();
+		const storageDriverFallback = await this.storageDriverFallback();
+
 		const shares = await this.models().share().byItemIds(ids);
 
 		await this.withTransaction(async () => {
 			await this.models().share().delete(shares.map(s => s.id));
 			await this.models().userItem().deleteByItemIds(ids);
 			await this.models().itemResource().deleteByItemIds(ids);
+			await storageDriver.delete(ids, { models: this.models() });
+			if (storageDriverFallback) await storageDriverFallback.delete(ids, { models: this.models() });
 
 			await super.delete(ids, options);
 		}, 'ItemModel::delete');
@@ -552,6 +811,7 @@ export default class ItemModel extends BaseModel<Item> {
 	public async makeTestItem(userId: Uuid, num: number) {
 		return this.saveForUser(userId, {
 			name: `${num.toString().padStart(32, '0')}.md`,
+			content: Buffer.from(''),
 		});
 	}
 
@@ -560,25 +820,30 @@ export default class ItemModel extends BaseModel<Item> {
 			for (let i = 1; i <= count; i++) {
 				await this.saveForUser(userId, {
 					name: `${i.toString().padStart(32, '0')}.md`,
+					content: Buffer.from(''),
 				});
 			}
 		}, 'ItemModel::makeTestItems');
 	}
 
+	// This method should be private because items should only be saved using
+	// saveFromRawContent, which is going to deal with the content driver. But
+	// since it's used in various test units, it's kept public for now.
 	public async saveForUser(userId: Uuid, item: Item, options: SaveOptions = {}): Promise<Item> {
 		if (!userId) throw new Error('userId is required');
 
 		item = { ... item };
 		const isNew = await this.isNew(item, options);
 
-		if (item.content) {
-			item.content_size = item.content.byteLength;
-		}
-
 		let previousItem: ChangePreviousItem = null;
+
+		if (item.content && !item.content_storage_id) {
+			item.content_storage_id = (await this.storageDriver()).storageId;
+		}
 
 		if (isNew) {
 			if (!item.mime_type) item.mime_type = mimeUtils.fromFilename(item.name) || '';
+			if (!item.owner_id) item.owner_id = userId;
 		} else {
 			const beforeSaveItem = (await this.load(item.id, { fields: ['name', 'jop_type', 'jop_parent_id', 'jop_share_id'] }));
 			const resourceIds = beforeSaveItem.jop_type === ModelType.Note ? await this.models().itemResource().byItemId(item.id) : [];

@@ -102,14 +102,7 @@
 		// images are being displayed then restored while images are being reloaded, the new scrollTop might be changed
 		// so that it is not greater than contentHeight. On the other hand, with percentScroll it is possible to restore
 		// it at any time knowing that it's not going to be changed because the content height has changed.
-		// To restore percentScroll the "checkScrollIID" interval is used. It constantly resets the scroll position during
-		// one second after the content has been updated.
-		//
-		// ignoreNextScroll is used to differentiate between scroll event from the users and those that are the result
-		// of programmatically changing scrollTop. We only want to respond to events initiated by the user.
-
 		let percentScroll_ = 0;
-		let checkScrollIID_ = null;
 
 		// This variable provides a	way to skip scroll events for a certain duration.
 		// In general, it should be set whenever the scroll value is set explicitely (programmatically)
@@ -195,7 +188,77 @@
 			return true;
 		}
 
-		let checkAllImageLoadedIID_ = null;
+		let alreadyAllImagesLoaded = false;
+
+		// During a note is being rendered, its height is varying. To keep scroll
+		// consistency, observing the height of the content element and updating its
+		// scroll position is required. For the purpose, 'ResizeObserver' is used.
+		// ResizeObserver is standard and an element's counterpart to 'window.resize'
+		// event. It's overhead is cheaper than observation using an interval timer.
+		//
+		// To observe the scroll height of the content element, adding, removing and
+		// resizing of its children should be observed. So, the combination of
+		// ResizeObserver (used for resizing) and MutationObserver (used for ading
+		// and removing) is used.
+		//
+		// References:
+		// https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver
+		// https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver
+		//
+		// By using them, this observeRendering() function provides a efficient way
+		// to observe the changes of the scroll height of the content element
+		// using a callback approach.
+		function observeRendering(callback, compress = false) {
+			let previousHeight = 0;
+			const fn = (cause) => {
+				const height = contentElement.scrollHeight;
+				const heightChanged = height != previousHeight;
+				if (!compress || heightChanged) {
+					previousHeight = height;
+					callback(cause, height, heightChanged);
+				}
+			};
+			// 'resized' means DOM Layout change or Window resize event
+			let resizeObserver = new ResizeObserver(() => fn('resized'));
+			// An HTML document to be rendered is added and removed as a child of
+			// the content element for each setHtml() invocation.
+			let mutationObserver = new MutationObserver(entries => {
+				const e = entries[0];
+				e.removedNodes.forEach(n => n instanceof Element && resizeObserver.unobserve(n));
+				e.addedNodes.forEach(n => n instanceof Element && resizeObserver.observe(n));
+				if (e.removedNodes.length + e.addedNodes.length) fn('dom-changed');
+			});
+			mutationObserver.observe(contentElement, { childList: true });
+			return { mutationObserver, resizeObserver };
+		};
+
+		// A callback anonymous function invoked when the scroll height changes.
+		const onRendering = observeRendering((cause, height, heightChanged) => {
+			if (!alreadyAllImagesLoaded) {
+				const loaded = allImagesLoaded();
+				if (loaded) {
+					alreadyAllImagesLoaded = true;
+					ipcProxySendToHost('syncViewerScrollWithEditor', true);
+					ipcProxySendToHost('noteRenderComplete');
+					return;
+				}
+			}
+			if (heightChanged) {
+				// When the scroll height changes, sync is needed.
+				ipcProxySendToHost('syncViewerScrollWithEditor');
+			}
+		});
+
+		ipc.focus = (event) => {
+			const dummyID = 'joplin-content-focus-dummy';
+			if (! document.getElementById(dummyID)) {
+				const focusDummy = '<div style="width: 0; height: 0; overflow: hidden"><a id="' + dummyID + '" href="#">focus dummy</a></div>';
+				contentElement.insertAdjacentHTML("afterbegin", focusDummy);
+			}
+			const scrollTop = contentElement.scrollTop;
+			document.getElementById(dummyID).focus();
+			contentElement.scrollTop = scrollTop;
+		}
 
 		ipc.setHtml = (event) => {
 			const html = event.html;
@@ -206,23 +269,10 @@
 
 			contentElement.innerHTML = html;
 
-			let previousContentHeight = contentElement.scrollHeight;
-			let startTime = Date.now();
-			restorePercentScroll();
+			restorePercentScroll(); // First, a quick treatment is applied.
+			ipcProxySendToHost('syncViewerScrollWithEditor');
 
-			if (!checkScrollIID_) {
-				checkScrollIID_ = setInterval(() => {
-					const h = contentElement.scrollHeight;
-					if (h !== previousContentHeight) {
-						previousContentHeight = h;
-						restorePercentScroll();
-					}
-					if (Date.now() - startTime >= 1000) {
-						clearInterval(checkScrollIID_);
-						checkScrollIID_ = null;
-					}
-				}, 1);
-			}
+			alreadyAllImagesLoaded = false;
 
 			addPluginAssets(event.options.pluginAssets);
 
@@ -231,25 +281,10 @@
 			}
 
 			document.dispatchEvent(new Event('joplin-noteDidUpdate'));
-
-			if (checkAllImageLoadedIID_) clearInterval(checkAllImageLoadedIID_);
-
-			checkAllImageLoadedIID_ = setInterval(() => {
-				if (!allImagesLoaded()) return;
-
-				clearInterval(checkAllImageLoadedIID_);
-				ipcProxySendToHost('noteRenderComplete');
-			}, 100);
 		}
 
 		ipc.setPercentScroll = (event) => {
 			const percent = event.percent;
-
-			if (checkScrollIID_) {
-				clearInterval(checkScrollIID_);
-				checkScrollIID_ = null;
-			}
-
 			lastScrollEventTime = Date.now();
 			setPercentScroll(percent);
 		}
@@ -264,16 +299,16 @@
 				const markJsHackMarker_ = ' ';
 				for (let i = 0; i < elements.length; i++) {
 					if (!type) {
-						elements[i].innerHTML = elements[i].innerHTML + markJsHackMarker_;
+						elements[i].insertAdjacentHTML('beforeend', markJsHackMarker_);
 					} else if (type === 'insertBefore') {
 						elements[i].insertAdjacentHTML('beforeBegin', markJsHackMarker_);
 					}
 				}
 			}
 
-			prepareElementsForMarkJs(document.getElementsByTagName('p'));
-			prepareElementsForMarkJs(document.getElementsByTagName('div'));
-			prepareElementsForMarkJs(document.getElementsByTagName('br'), 'insertBefore');
+			prepareElementsForMarkJs(contentElement.getElementsByTagName('p'));
+			prepareElementsForMarkJs(contentElement.getElementsByTagName('div'));
+			prepareElementsForMarkJs(contentElement.getElementsByTagName('br'), 'insertBefore');
 			markJsHackMarkerInserted_ = true;
 		}
 
@@ -346,6 +381,10 @@
 			return Math.max(0, contentElement.scrollHeight - contentElement.clientHeight);
 		}
 
+		function maxScrollLeft() {
+			return Math.max(0, contentElement.scrollWidth - contentElement.clientWidth);
+		}
+
 		// The body element needs to have a fixed height for the content to be scrollable
 		function updateBodyHeight() {
 			document.getElementById('joplin-container-body').style.height = window.innerHeight + 'px';
@@ -354,7 +393,70 @@
 
 		function currentPercentScroll() {
 			const m = maxScrollTop();
-			return m ? contentElement.scrollTop / m : 0;
+			// As of 2021, if zoomFactor != 1, underlying Chrome returns scrollTop with 
+			// some numerical error. It can be more than maxScrollTop().
+			return m ? Math.min(1, contentElement.scrollTop / m) : 0;
+		}
+
+		// If zoom factor is not 1, Electron/Chromium calculates scrollTop incorrectly.
+		// This is automatically set.
+		let zoomFactorIsNotOne = false;
+		// When custom smooth scrolling is ongoing, remainedScrollDx/Dy keep the remaining
+		// amount of scrolling.
+		let remainedScrollDx = 0, remainedScrollDy = 0, remainedScrollTimerId = null;
+
+		function resetSmoothScroll() { remainedScrollDx = 0; remainedScrollDy = 0; }
+
+		// To avoid Electron/Chromium's scrolling bug when zoom fator is not 1,
+		// Custom scrolling is implemented. This is used only when zoom factor is not 1.
+		// If smoothly argument is true, smooth scrolling is performed.
+		// See https://github.com/laurent22/joplin/pull/5606#issuecomment-964293459
+		function customScroll(wheelEvent, smoothly) {
+			const linePixels = 100 / 3;
+			const pagePixelsX = Math.max(linePixels, contentElement.clientWidth);
+			const pagePixelsY = Math.max(linePixels, contentElement.clientHeight);
+			let pixelsPerUnitX = 1, pixelsPerUnitY = 1; // for WheelEvent.DOM_DELTA_PIXEL
+			if (wheelEvent.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+				pixelsPerUnitX = pixelsPerUnitY = linePixels;
+			} else if (wheelEvent.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+				pixelsPerUnitX = pagePixelsX;
+				pixelsPerUnitY = pagePixelsY;
+			}
+			if (!smoothly) {
+				if (wheelEvent.deltaX) {
+					const dx = wheelEvent.deltaX * pixelsPerUnitX;
+					contentElement.scrollLeft = Math.max(0, Math.min(maxScrollLeft(), contentElement.scrollLeft + dx));
+				}
+				if (wheelEvent.deltaY) {
+					const dy = wheelEvent.deltaY * pixelsPerUnitY;
+					contentElement.scrollTop = Math.max(0, Math.min(maxScrollTop(), contentElement.scrollTop + dy));
+				}
+			} else {
+				if (Math.sign(remainedScrollDx) !== Math.sign(wheelEvent.deltaX)) remainedScrollDx = 0;
+				if (Math.sign(remainedScrollDy) !== Math.sign(wheelEvent.deltaY)) remainedScrollDy = 0;
+				remainedScrollDx += wheelEvent.deltaX * pixelsPerUnitX;
+				remainedScrollDy += wheelEvent.deltaY * pixelsPerUnitY;
+				const maxDx = Math.max(8.5, Math.min(pagePixelsX, Math.abs(remainedScrollDx)) / 5);
+				const maxDy = Math.max(8.5, Math.min(pagePixelsY, Math.abs(remainedScrollDy)) / 5);
+				const f = () => {
+					if (remainedScrollTimerId) {
+						clearTimeout(remainedScrollTimerId);
+						remainedScrollTimerId = null;
+					}
+					if (remainedScrollDx) {
+						const dx = Math.max(-maxDx, Math.min(maxDx, remainedScrollDx));
+						remainedScrollDx -= dx;
+						contentElement.scrollLeft = Math.max(0, Math.min(maxScrollLeft(), contentElement.scrollLeft + dx));
+					}
+					if (remainedScrollDy) {
+						const dy = Math.max(-maxDy, Math.min(maxDy, remainedScrollDy));
+						remainedScrollDy -= dy;
+						contentElement.scrollTop = Math.max(0, Math.min(maxScrollTop(), contentElement.scrollTop + dy));
+					}
+					if (remainedScrollDx || remainedScrollDy) remainedScrollTimerId = setTimeout(f, 20);
+				};
+				f();
+			}
 		}
 
 		contentElement.addEventListener('wheel', webviewLib.logEnabledEventHandler(e => {
@@ -364,8 +466,14 @@
 			// To avoid this problem, prevent the upstream from calculating scrollTop and
 			// calculate by yourself by accumulating wheel events.
 			// https://github.com/laurent22/joplin/pull/5496
-			contentElement.scrollTop = Math.max(0, Math.min(maxScrollTop(), contentElement.scrollTop + e.deltaY));
-			e.preventDefault();
+			// When the Electron/Chromium bug is fixed, remove this listener.
+
+			// If scrollTop ever has a fraction part, zoomFactor is not 1.
+			if (zoomFactorIsNotOne || !Number.isInteger(contentElement.scrollTop)) {
+				zoomFactorIsNotOne = true;
+				customScroll(e, true);
+				e.preventDefault();
+			}
 		}));
 
 		contentElement.addEventListener('scroll', webviewLib.logEnabledEventHandler(e => {
@@ -462,6 +570,9 @@
 
 		window.addEventListener('resize', webviewLib.logEnabledEventHandler(() => {
 			updateBodyHeight();
+			// When zoomFactor is changed, resize event happens.
+			zoomFactorIsNotOne = false;
+			resetSmoothScroll();
 		}));
 
 		// Prevent middle-click as that would open the URL in an Electron window

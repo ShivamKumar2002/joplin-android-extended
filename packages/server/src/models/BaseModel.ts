@@ -1,9 +1,9 @@
 import { WithDates, WithUuid, databaseSchema, ItemType, Uuid, User } from '../services/database/types';
-import { DbConnection } from '../db';
+import { DbConnection, QueryContext } from '../db';
 import TransactionHandler from '../utils/TransactionHandler';
 import uuidgen from '../utils/uuidgen';
 import { ErrorUnprocessableEntity, ErrorBadRequest } from '../utils/errors';
-import { Models } from './factory';
+import { Models, NewModelFactoryHandler } from './factory';
 import * as EventEmitter from 'events';
 import { Config } from '../utils/types';
 import personalizedUserContentBaseUrl from '@joplin/lib/services/joplinServer/personalizedUserContentBaseUrl';
@@ -24,6 +24,7 @@ export interface SaveOptions {
 	skipValidation?: boolean;
 	validationRules?: any;
 	previousItem?: any;
+	queryContext?: QueryContext;
 }
 
 export interface LoadOptions {
@@ -54,12 +55,12 @@ export default abstract class BaseModel<T> {
 	private defaultFields_: string[] = [];
 	private db_: DbConnection;
 	private transactionHandler_: TransactionHandler;
-	private modelFactory_: Function;
+	private modelFactory_: NewModelFactoryHandler;
 	private static eventEmitter_: EventEmitter = null;
 	private config_: Config;
 	private savePoints_: SavePoint[] = [];
 
-	public constructor(db: DbConnection, modelFactory: Function, config: Config) {
+	public constructor(db: DbConnection, modelFactory: NewModelFactoryHandler, config: Config) {
 		this.db_ = db;
 		this.modelFactory_ = modelFactory;
 		this.config_ = config;
@@ -71,7 +72,7 @@ export default abstract class BaseModel<T> {
 	// connection is passed to it. That connection can be the regular db
 	// connection, or the active transaction.
 	protected models(db: DbConnection = null): Models {
-		return this.modelFactory_(db || this.db, this.config_);
+		return this.modelFactory_(db || this.db);
 	}
 
 	protected get baseUrl(): string {
@@ -90,7 +91,11 @@ export default abstract class BaseModel<T> {
 		return this.config_.appName;
 	}
 
-	protected get db(): DbConnection {
+	protected get itemSizeHardLimit(): number {
+		return this.config_.itemSizeHardLimit;
+	}
+
+	public get db(): DbConnection {
 		if (this.transactionHandler_.activeTransaction) return this.transactionHandler_.activeTransaction;
 		return this.db_;
 	}
@@ -113,7 +118,7 @@ export default abstract class BaseModel<T> {
 		throw new Error('Must be overriden');
 	}
 
-	protected selectFields(options: LoadOptions, defaultFields: string[] = null, mainTable: string = ''): string[] {
+	protected selectFields(options: LoadOptions, defaultFields: string[] = null, mainTable: string = '', requiredFields: string[] = []): string[] {
 		let output: string[] = [];
 		if (options && options.fields) {
 			output = options.fields;
@@ -121,6 +126,12 @@ export default abstract class BaseModel<T> {
 			output = defaultFields;
 		} else {
 			output = this.defaultFields;
+		}
+
+		if (!output.includes('*')) {
+			for (const f of requiredFields) {
+				if (!output.includes(f)) output.push(f);
+			}
 		}
 
 		if (mainTable) {
@@ -287,12 +298,12 @@ export default abstract class BaseModel<T> {
 
 		await this.withTransaction(async () => {
 			if (isNew) {
-				await this.db(this.tableName).insert(toSave);
+				await this.db(this.tableName).insert(toSave).queryContext(options.queryContext || {});
 			} else {
 				const objectId: string = (toSave as WithUuid).id;
 				if (!objectId) throw new Error('Missing "id" property');
 				delete (toSave as WithUuid).id;
-				const updatedCount: number = await this.db(this.tableName).update(toSave).where({ id: objectId });
+				const updatedCount: number = await this.db(this.tableName).update(toSave).where({ id: objectId }).queryContext(options.queryContext || {});
 				(toSave as WithUuid).id = objectId;
 
 				// Sanity check:

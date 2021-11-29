@@ -1,4 +1,4 @@
-export type Uuid = any;
+export type Uuid = string;
 
 export enum ItemAddressingType {
 	Id = 1,
@@ -143,19 +143,7 @@ export interface ShareUser extends WithDates, WithUuid {
 	share_id?: Uuid;
 	user_id?: Uuid;
 	status?: ShareUserStatus;
-}
-
-export interface Item extends WithDates, WithUuid {
-	name?: string;
-	mime_type?: string;
-	content?: Buffer;
-	content_size?: number;
-	jop_id?: Uuid;
-	jop_parent_id?: Uuid;
-	jop_share_id?: Uuid;
-	jop_type?: number;
-	jop_encryption_applied?: number;
-	jop_updated_time?: number;
+	master_key?: string;
 }
 
 export interface UserItem extends WithDates {
@@ -183,6 +171,7 @@ export interface Share extends WithDates, WithUuid {
 	type?: ShareType;
 	folder_id?: Uuid;
 	note_id?: Uuid;
+	master_key_id?: Uuid;
 }
 
 export interface Change extends WithDates, WithUuid {
@@ -257,6 +246,28 @@ export interface Event extends WithUuid {
 	created_time?: number;
 }
 
+export interface Storage {
+	id?: number;
+	connection_string?: string;
+	updated_time?: string;
+	created_time?: string;
+}
+
+export interface Item extends WithDates, WithUuid {
+	name?: string;
+	mime_type?: string;
+	content?: Buffer;
+	content_size?: number;
+	jop_id?: Uuid;
+	jop_parent_id?: Uuid;
+	jop_share_id?: Uuid;
+	jop_type?: number;
+	jop_encryption_applied?: number;
+	jop_updated_time?: number;
+	owner_id?: Uuid;
+	content_storage_id?: number;
+}
+
 export const databaseSchema: DatabaseTables = {
 	sessions: {
 		id: { type: 'string' },
@@ -306,21 +317,7 @@ export const databaseSchema: DatabaseTables = {
 		status: { type: 'number' },
 		updated_time: { type: 'string' },
 		created_time: { type: 'string' },
-	},
-	items: {
-		id: { type: 'string' },
-		name: { type: 'string' },
-		mime_type: { type: 'string' },
-		updated_time: { type: 'string' },
-		created_time: { type: 'string' },
-		content: { type: 'any' },
-		content_size: { type: 'number' },
-		jop_id: { type: 'string' },
-		jop_parent_id: { type: 'string' },
-		jop_share_id: { type: 'string' },
-		jop_type: { type: 'number' },
-		jop_encryption_applied: { type: 'number' },
-		jop_updated_time: { type: 'string' },
+		master_key: { type: 'string' },
 	},
 	user_items: {
 		id: { type: 'number' },
@@ -349,6 +346,7 @@ export const databaseSchema: DatabaseTables = {
 		created_time: { type: 'string' },
 		folder_id: { type: 'string' },
 		note_id: { type: 'string' },
+		master_key_id: { type: 'string' },
 	},
 	changes: {
 		counter: { type: 'number' },
@@ -427,6 +425,29 @@ export const databaseSchema: DatabaseTables = {
 		type: { type: 'number' },
 		name: { type: 'string' },
 		created_time: { type: 'string' },
+	},
+	storages: {
+		id: { type: 'number' },
+		connection_string: { type: 'string' },
+		updated_time: { type: 'string' },
+		created_time: { type: 'string' },
+	},
+	items: {
+		id: { type: 'string' },
+		name: { type: 'string' },
+		mime_type: { type: 'string' },
+		updated_time: { type: 'string' },
+		created_time: { type: 'string' },
+		content: { type: 'any' },
+		content_size: { type: 'number' },
+		jop_id: { type: 'string' },
+		jop_parent_id: { type: 'string' },
+		jop_share_id: { type: 'string' },
+		jop_type: { type: 'number' },
+		jop_encryption_applied: { type: 'number' },
+		jop_updated_time: { type: 'string' },
+		owner_id: { type: 'string' },
+		content_storage_id: { type: 'number' },
 	},
 };
 // AUTO-GENERATED-TYPES

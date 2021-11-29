@@ -141,7 +141,7 @@ async function noteLinkedItemInfos(userId: Uuid, itemModel: ItemModel, note: Not
 	const output: LinkedItemInfos = {};
 
 	for (const jopId of jopIds) {
-		const item = await itemModel.loadByJopId(userId, jopId, { fields: ['*'] });
+		const item = await itemModel.loadByJopId(userId, jopId, { fields: ['*'], withContent: true });
 		if (!item) continue;
 
 		output[jopId] = {
@@ -153,7 +153,7 @@ async function noteLinkedItemInfos(userId: Uuid, itemModel: ItemModel, note: Not
 	return output;
 }
 
-async function renderResource(userId: string, resourceId: string, item: Item, content: any): Promise<FileViewerResponse> {
+async function renderResource(userId: string, resourceId: string, item: Item, content: Buffer): Promise<FileViewerResponse> {
 	// The item passed to this function is the resource blob, which is
 	// sufficient to download the resource. However, if we want a more user
 	// friendly download, we need to know the resource original name and mime
@@ -170,7 +170,7 @@ async function renderResource(userId: string, resourceId: string, item: Item, co
 	return {
 		body: content,
 		mime: jopItem ? jopItem.mime : item.mime_type,
-		size: item.content_size,
+		size: content ? content.byteLength : 0,
 		filename: jopItem ? jopItem.title : '',
 	};
 }
@@ -265,7 +265,7 @@ export async function renderItem(userId: Uuid, item: Item, share: Share, query: 
 	};
 
 	if (query.resource_id) {
-		const resourceItem = await models_.item().loadByName(userId, resourceBlobPath(query.resource_id), { fields: ['*'] });
+		const resourceItem = await models_.item().loadByName(userId, resourceBlobPath(query.resource_id), { fields: ['*'], withContent: true });
 		fileToRender.item = resourceItem;
 		fileToRender.content = resourceItem.content;
 		fileToRender.jopItemId = query.resource_id;
