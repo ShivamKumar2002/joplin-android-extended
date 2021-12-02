@@ -27,6 +27,11 @@ export interface ImportContentToStorageOptions {
 	logger?: Logger | LoggerWrapper;
 }
 
+export interface DeleteDatabaseContentOptions {
+	batchSize?: number;
+	logger?: Logger | LoggerWrapper;
+}
+
 export interface SaveFromRawContentItem {
 	name: string;
 	body: Buffer;
@@ -192,11 +197,15 @@ export default class ItemModel extends BaseModel<Item> {
 		const storageDriver = await this.storageDriver();
 		const storageDriverFallback = await this.storageDriverFallback();
 
-		if (await storageDriver.exists(itemId, context)) {
+		if (!storageDriverFallback) {
 			return storageDriver.read(itemId, context);
 		} else {
-			if (!storageDriverFallback) throw new Error(`Content does not exist but fallback content driver is not defined: ${itemId}`);
-			return storageDriverFallback.read(itemId, context);
+			if (await storageDriver.exists(itemId, context)) {
+				return storageDriver.read(itemId, context);
+			} else {
+				if (!storageDriverFallback) throw new Error(`Content does not exist but fallback content driver is not defined: ${itemId}`);
+				return storageDriverFallback.read(itemId, context);
+			}
 		}
 	}
 
@@ -392,6 +401,52 @@ export default class ItemModel extends BaseModel<Item> {
 
 			totalDone += items.length;
 		}
+	}
+
+	public async deleteDatabaseContentColumn(options: DeleteDatabaseContentOptions = null) {
+		if (!returningSupported(this.db)) throw new Error('Not supported by this database driver');
+
+		options = {
+			batchSize: 1000,
+			logger: new Logger(),
+			...options,
+		};
+
+		const itemCount = (await this.db(this.tableName)
+			.count('id', { as: 'total' })
+			.where('content', '!=', Buffer.from(''))
+			.first())['total'];
+
+		let totalDone = 0;
+
+		// UPDATE items SET content = '\x' WHERE id IN (SELECT id FROM items WHERE content != '\x' LIMIT 5000);
+
+		while (true) {
+			options.logger.info(`Processing items ${totalDone} / ${itemCount}`);
+
+			const updatedRows = await this
+				.db(this.tableName)
+				.update({ content: Buffer.from('') }, ['id'])
+				.whereIn('id', this.db(this.tableName)
+					.select(['id'])
+					.where('content', '!=', Buffer.from(''))
+					.limit(options.batchSize)
+				);
+
+			totalDone += updatedRows.length;
+
+			if (!updatedRows.length) {
+				options.logger.info(`All items have been processed. Total: ${totalDone}`);
+				return;
+			}
+
+			await msleep(1000);
+		}
+	}
+
+	public async dbContent(itemId: Uuid): Promise<Buffer> {
+		const row: Item = await this.db(this.tableName).select(['content']).where('id', itemId).first();
+		return row.content;
 	}
 
 	public async sharedFolderChildrenItems(shareUserIds: Uuid[], folderId: string, includeResources: boolean = true): Promise<Item[]> {

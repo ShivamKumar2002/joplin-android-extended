@@ -5,7 +5,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-2016]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
 
       # Silence apt-get update errors (for example when a module doesn't
@@ -29,7 +29,8 @@ jobs:
           brew install translate-toolkit
 
       - name: Install Docker Engine
-        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/server-v')
+        # if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/server-v')
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y apt-transport-https
           sudo apt-get install -y ca-certificates
