@@ -102,12 +102,14 @@ async function createPotFile(potFilePath) {
 		'./packages/app-cli/tests-build/*',
 		'./packages/app-cli/tests/*',
 		'./packages/app-clipper/*',
+		'./packages/app-desktop/build/*',
 		'./packages/app-desktop/dist/*',
 		'./packages/app-desktop/gui/note-viewer/pluginAssets/*',
 		'./packages/app-desktop/gui/style/*',
 		'./packages/app-desktop/lib/*',
 		'./packages/app-desktop/pluginAssets/*',
 		'./packages/app-desktop/tools/*',
+		'./packages/app-desktop/vendor/*',
 		'./packages/app-mobile/android/*',
 		'./packages/app-mobile/ios/*',
 		'./packages/app-mobile/pluginAssets/*',
@@ -116,6 +118,7 @@ async function createPotFile(potFilePath) {
 		'./packages/lib/rnInjectedJs/*',
 		'./packages/lib/vendor/*',
 		'./packages/renderer/assets/*',
+		'./packages/server/dist/*',
 		'./packages/tools/*',
 		'./packages/turndown-plugin-gfm/*',
 		'./packages/turndown/*',
@@ -126,6 +129,11 @@ async function createPotFile(potFilePath) {
 	const findCommand = `find . -type f \\( -iname \\*.js -o -iname \\*.ts -o -iname \\*.tsx \\) -not -path '${excludedDirs.join('\' -not -path \'')}'`;
 	process.chdir(rootDir);
 	let files = (await execCommand(findCommand)).split('\n');
+
+	// Further filter files - in particular remove some specific files and
+	// extensions we don't need. Also, when there's two file with the same
+	// basename, such as "exmaple.js", and "example.ts", we only keep the file
+	// with ".ts" extension (since the .js should be the compiled file).
 
 	const toProcess = {};
 
@@ -140,6 +148,9 @@ async function createPotFile(potFilePath) {
 		if (nameNoExt.endsWith('.eslintrc')) continue;
 		if (nameNoExt.endsWith('jest.config')) continue;
 		if (nameNoExt.endsWith('jest.setup')) continue;
+		if (nameNoExt.endsWith('webpack.config')) continue;
+		if (nameNoExt.endsWith('.prettierrc')) continue;
+		if (file.endsWith('.d.ts')) continue;
 
 		if (toProcess[nameNoExt] && ['ts', 'tsx'].includes(fileExtension(toProcess[nameNoExt]))) {
 			continue;
@@ -154,6 +165,9 @@ async function createPotFile(potFilePath) {
 	}
 
 	files.sort();
+
+	// console.info(files.join('\n'));
+	// process.exit(0);
 
 	// Note: we previously used the xgettext utility, but it only partially
 	// supports TypeScript and doesn't support .tsx files at all. Besides; the
@@ -334,7 +348,7 @@ function flagImageUrl(locale) {
 	if (locale === 'sv') return `${baseUrl}/country-4x3/se.png`;
 	if (locale === 'nb_NO') return `${baseUrl}/country-4x3/no.png`;
 	if (locale === 'ro') return `${baseUrl}/country-4x3/ro.png`;
-	if (locale === 'vi') return `${baseUrl}/country-4x3/vi.png`;
+	if (locale === 'vi') return `${baseUrl}/country-4x3/vn.png`;
 	if (locale === 'fa') return `${baseUrl}/country-4x3/ir.png`;
 	if (locale === 'eo') return `${baseUrl}/esperanto.png`;
 	return `${baseUrl}/country-4x3/${countryCodeOnly(locale).toLowerCase()}.png`;
@@ -451,16 +465,6 @@ async function main() {
 	stats.sort((a, b) => a.languageName < b.languageName ? -1 : +1);
 
 	saveToFile(`${jsonLocalesDir}/index.js`, buildIndex(locales, stats));
-
-	// const destDirs = [
-	// 	`${libDir}/locales`,
-	// 	`${electronDir}/locales`,
-	// 	`${cliDir}/locales-build`,
-	// ];
-
-	// for (const destDir of destDirs) {
-	// 	await execCommand(`rsync -a "${jsonLocalesDir}/" "${destDir}/"`);
-	// }
 
 	await updateReadmeWithStats(stats);
 }

@@ -1,7 +1,10 @@
 import Logger from '@joplin/lib/Logger';
 import { Models } from '../models/factory';
+import { Config, Env } from '../utils/types';
 import BaseService from './BaseService';
 import { Event, EventType } from './database/types';
+import { Services } from './types';
+import { _ } from '@joplin/lib/locale';
 const cron = require('node-cron');
 
 const logger = Logger.create('TaskService');
@@ -14,12 +17,33 @@ export enum TaskId {
 	HandleFailedPaymentSubscriptions = 5,
 	DeleteExpiredSessions = 6,
 	CompressOldChanges = 7,
+	ProcessUserDeletions = 8,
+	AutoAddDisabledAccountsForDeletion = 9,
 }
 
 export enum RunType {
 	Scheduled = 1,
 	Manual = 2,
 }
+
+export const taskIdToLabel = (taskId: TaskId): string => {
+	const strings: Record<TaskId, string> = {
+		[TaskId.DeleteExpiredTokens]: _('Delete expired tokens'),
+		[TaskId.UpdateTotalSizes]: _('Update total sizes'),
+		[TaskId.HandleOversizedAccounts]: _('Process oversized accounts'),
+		[TaskId.HandleBetaUserEmails]: 'Process beta user emails',
+		[TaskId.HandleFailedPaymentSubscriptions]: _('Process failed payment subscriptions'),
+		[TaskId.DeleteExpiredSessions]: _('Delete expired sessions'),
+		[TaskId.CompressOldChanges]: _('Compress old changes'),
+		[TaskId.ProcessUserDeletions]: _('Process user deletions'),
+		[TaskId.AutoAddDisabledAccountsForDeletion]: _('Auto-add disabled accounts for deletion'),
+	};
+
+	const s = strings[taskId];
+	if (!s) throw new Error(`No such task: ${taskId}`);
+
+	return s;
+};
 
 const runTypeToString = (runType: RunType) => {
 	if (runType === RunType.Scheduled) return 'scheduled';
@@ -31,7 +55,7 @@ export interface Task {
 	id: TaskId;
 	description: string;
 	schedule: string;
-	run(models: Models): void;
+	run(models: Models, services: Services): void;
 }
 
 export type Tasks = Record<number, Task>;
@@ -53,6 +77,12 @@ export default class TaskService extends BaseService {
 
 	private tasks_: Tasks = {};
 	private taskStates_: Record<number, TaskState> = {};
+	private services_: Services;
+
+	public constructor(env: Env, models: Models, config: Config, services: Services) {
+		super(env, models, config);
+		this.services_ = services;
+	}
 
 	public registerTask(task: Task) {
 		if (this.tasks_[task.id]) throw new Error(`Already a task with this ID: ${task.id}`);
@@ -106,7 +136,7 @@ export default class TaskService extends BaseService {
 
 		try {
 			logger.info(`Running ${displayString} (${runTypeToString(runType)})...`);
-			await this.tasks_[id].run(this.models);
+			await this.tasks_[id].run(this.models, this.services_);
 		} catch (error) {
 			logger.error(`On ${displayString}`, error);
 		}

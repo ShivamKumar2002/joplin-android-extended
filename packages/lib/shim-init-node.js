@@ -17,6 +17,7 @@ const toRelative = require('relative');
 const timers = require('timers');
 const zlib = require('zlib');
 const dgram = require('dgram');
+const { basename, fileExtension, safeFileExtension } = require('./path-utils');
 
 function fileExists(filePath) {
 	try {
@@ -220,25 +221,30 @@ function shimInit(options = null) {
 		return true;
 	};
 
+	// This is a bit of an ugly method that's used to both create a new resource
+	// from a file, and update one. To update a resource, pass the
+	// destinationResourceId option. This method is indirectly tested in
+	// Api.test.ts.
 	shim.createResourceFromPath = async function(filePath, defaultProps = null, options = null) {
 		options = Object.assign({
 			resizeLargeImages: 'always', // 'always', 'ask' or 'never'
 			userSideValidation: false,
+			destinationResourceId: '',
 		}, options);
 
 		const readChunk = require('read-chunk');
 		const imageType = require('image-type');
 
 		const uuid = require('./uuid').default;
-		const { basename, fileExtension, safeFileExtension } = require('./path-utils');
 
 		if (!(await fs.pathExists(filePath))) throw new Error(_('Cannot access %s', filePath));
 
 		defaultProps = defaultProps ? defaultProps : {};
 
-		const resourceId = defaultProps.id ? defaultProps.id : uuid.create();
+		let resourceId = defaultProps.id ? defaultProps.id : uuid.create();
+		if (options.destinationResourceId) resourceId = options.destinationResourceId;
 
-		const resource = Resource.new();
+		let resource = options.destinationResourceId ? {} : Resource.new();
 		resource.id = resourceId;
 		resource.mime = mimeUtils.fromFilename(filePath);
 		resource.title = basename(filePath);
@@ -281,7 +287,18 @@ function shimInit(options = null) {
 
 		const saveOptions = { isNew: true };
 		if (options.userSideValidation) saveOptions.userSideValidation = true;
-		return Resource.save(resource, saveOptions);
+
+		if (options.destinationResourceId) {
+			saveOptions.isNew = false;
+			const tempPath = `${targetPath}.tmp`;
+			await shim.fsDriver().move(targetPath, tempPath);
+			resource = await Resource.save(resource, saveOptions);
+			await Resource.updateResourceBlobContent(resource.id, tempPath);
+			await shim.fsDriver().remove(tempPath);
+			return resource;
+		} else {
+			return Resource.save(resource, saveOptions);
+		}
 	};
 
 	shim.attachFileToNoteBody = async function(noteBody, filePath, position = null, options = null) {
@@ -329,6 +346,38 @@ function shimInit(options = null) {
 		});
 		return Note.save(newNote);
 	};
+
+	shim.imageToDataUrl = async (filePath, maxSize) => {
+		if (shim.isElectron()) {
+			const nativeImage = require('electron').nativeImage;
+			let image = nativeImage.createFromPath(filePath);
+			if (!image) throw new Error(`Could not load image: ${filePath}`);
+
+			const ext = fileExtension(filePath).toLowerCase();
+			if (!['jpg', 'jpeg', 'png'].includes(ext)) throw new Error(`Unsupported file format: ${ext}`);
+
+			if (maxSize) {
+				const size = image.getSize();
+
+				if (size.width > maxSize || size.height > maxSize) {
+					console.warn(`Image is over ${maxSize}px - resizing it: ${filePath}`);
+
+					const options = {};
+					if (size.width > size.height) {
+						options.width = maxSize;
+					} else {
+						options.height = maxSize;
+					}
+
+					image = image.resize(options);
+				}
+			}
+
+			return image.toDataURL();
+		} else {
+			throw new Error('Unsupported method');
+		}
+	},
 
 	shim.imageFromDataUrl = async function(imageDataUrl, filePath, options = null) {
 		if (options === null) options = {};

@@ -26,6 +26,7 @@ export interface Header {
 	name: string;
 	label: string;
 	stretch?: boolean;
+	canSort?: boolean;
 }
 
 interface HeaderView {
@@ -35,20 +36,26 @@ interface HeaderView {
 	iconDir: string;
 }
 
+export type RowItemRenderCallback = ()=> string;
+
 interface RowItem {
 	value: string;
 	checkbox?: boolean;
 	url?: string;
 	stretch?: boolean;
+	hint?: string;
+	render?: RowItemRenderCallback;
 }
 
 export type Row = RowItem[];
 
 interface RowItemView {
 	value: string;
+	valueHtml: string;
 	classNames: string[];
 	url: string;
 	checkbox: boolean;
+	hint: string;
 }
 
 type RowView = RowItemView[];
@@ -79,9 +86,11 @@ export function makeTablePagination(query: any, defaultOrderField: string, defau
 }
 
 function makeHeaderView(header: Header, parentBaseUrl: string, baseUrlQuery: PaginationQueryParams, pagination: Pagination): HeaderView {
+	const canSort = header.canSort !== false;
+
 	return {
 		label: header.label,
-		sortLink: !pagination ? null : setQueryParameters(parentBaseUrl, { ...baseUrlQuery, 'order_by': header.name, 'order_dir': headerNextOrder(header.name, pagination) }),
+		sortLink: !pagination || !canSort ? null : setQueryParameters(parentBaseUrl, { ...baseUrlQuery, 'order_by': header.name, 'order_dir': headerNextOrder(header.name, pagination) }),
 		classNames: [header.stretch ? 'stretch' : 'nowrap', headerIsSelectedClass(header.name, pagination)],
 		iconDir: headerSortIconDir(header.name, pagination),
 	};
@@ -91,9 +100,11 @@ function makeRowView(row: Row): RowView {
 	return row.map(rowItem => {
 		return {
 			value: rowItem.value,
+			valueHtml: rowItem.render ? rowItem.render() : '',
 			classNames: [rowItem.stretch ? 'stretch' : 'nowrap'],
 			url: rowItem.url,
 			checkbox: rowItem.checkbox,
+			hint: rowItem.hint,
 		};
 	});
 }
@@ -104,6 +115,8 @@ export function makeTableView(table: Table): TableView {
 	let pagination: Pagination = null;
 
 	if (table.pageCount) {
+		if (!table.baseUrl || !table.requestQuery) throw new Error('Table.baseUrl and Table.requestQuery are required for pagination when there is more than one page');
+
 		baseUrlQuery = filterPaginationQueryParams(table.requestQuery);
 		pagination = table.pagination;
 		paginationLinks = createPaginationLinks(pagination.page, table.pageCount, setQueryParameters(table.baseUrl, { ...baseUrlQuery, 'page': 'PAGE_NUMBER' }));

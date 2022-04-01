@@ -108,6 +108,7 @@ export default class UserFlagModels extends BaseModel<UserFlag> {
 		const failedPaymentFinalFlag = flags.find(f => f.type === UserFlagType.FailedPaymentFinal);
 		const subscriptionCancelledFlag = flags.find(f => f.type === UserFlagType.SubscriptionCancelled);
 		const manuallyDisabledFlag = flags.find(f => f.type === UserFlagType.ManuallyDisabled);
+		const userDeletionInProgress = flags.find(f => f.type === UserFlagType.UserDeletionInProgress);
 
 		if (accountWithoutSubscriptionFlag) {
 			newProps.can_upload = 0;
@@ -133,6 +134,14 @@ export default class UserFlagModels extends BaseModel<UserFlag> {
 			newProps.enabled = 0;
 		}
 
+		if (userDeletionInProgress) {
+			newProps.enabled = 0;
+		}
+
+		if (user.enabled !== newProps.enabled) {
+			newProps.disabled_time = !newProps.enabled ? Date.now() : 0;
+		}
+
 		if (user.can_upload !== newProps.can_upload || user.enabled !== newProps.enabled) {
 			await this.models().user().save({
 				id: userId,
@@ -150,6 +159,10 @@ export default class UserFlagModels extends BaseModel<UserFlag> {
 
 	public async allByUserId(userId: Uuid): Promise<UserFlag[]> {
 		return this.db(this.tableName).where('user_id', '=', userId);
+	}
+
+	public async deleteByUserId(userId: Uuid) {
+		await this.db(this.tableName).where('user_id', '=', userId).delete();
 	}
 
 }

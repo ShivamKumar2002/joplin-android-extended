@@ -37,7 +37,9 @@ function commandToString(commandName: string, args: string[] = []) {
 	return output.join(' ');
 }
 
-async function insertChangelog(tag: string, changelogPath: string, changelog: string, isPrerelease: boolean) {
+async function insertChangelog(tag: string, changelogPath: string, changelog: string, isPrerelease: boolean, repoTagUrl: string = '') {
+	repoTagUrl = repoTagUrl || 'https://github.com/laurent22/joplin/releases/tag';
+
 	const currentText = await fs.readFile(changelogPath, 'UTF-8');
 	const lines = currentText.split('\n');
 
@@ -60,7 +62,7 @@ async function insertChangelog(tag: string, changelogPath: string, changelog: st
 
 	const header = [
 		'##',
-		`[${tag}](https://github.com/laurent22/joplin/releases/tag/${tag})`,
+		`[${tag}](${repoTagUrl}/${tag})`,
 	];
 	if (isPrerelease) header.push('(Pre-release)');
 	header.push('-');
@@ -78,13 +80,7 @@ async function insertChangelog(tag: string, changelogPath: string, changelog: st
 	return output.join('\n');
 }
 
-export async function completeReleaseWithChangelog(changelogPath: string, newVersion: string, newTag: string, appName: string, isPreRelease: boolean) {
-	const changelog = (await execCommand2(`node ${rootDir}/packages/tools/git-changelog ${newTag} --publish-format full`, { })).trim();
-
-	const newChangelog = await insertChangelog(newTag, changelogPath, changelog, isPreRelease);
-
-	await fs.writeFile(changelogPath, newChangelog);
-
+export function releaseFinalGitCommands(appName: string, newVersion: string, newTag: string): string {
 	const finalCmds = [
 		'git pull',
 		'git add -A',
@@ -94,6 +90,16 @@ export async function completeReleaseWithChangelog(changelogPath: string, newVer
 		'git push --tags',
 	];
 
+	return finalCmds.join(' && ');
+}
+
+export async function completeReleaseWithChangelog(changelogPath: string, newVersion: string, newTag: string, appName: string, isPreRelease: boolean, repoTagUrl = '') {
+	const changelog = (await execCommand2(`node ${rootDir}/packages/tools/git-changelog ${newTag} --publish-format full`, { showStdout: false })).trim();
+
+	const newChangelog = await insertChangelog(newTag, changelogPath, changelog, isPreRelease, repoTagUrl);
+
+	await fs.writeFile(changelogPath, newChangelog);
+
 	console.info('');
 	console.info('Verify that the changelog is correct:');
 	console.info('');
@@ -101,7 +107,7 @@ export async function completeReleaseWithChangelog(changelogPath: string, newVer
 	console.info('');
 	console.info('Then run these commands:');
 	console.info('');
-	console.info(finalCmds.join(' && '));
+	console.info(releaseFinalGitCommands(appName, newVersion, newTag));
 }
 
 async function loadGitHubUsernameCache() {
@@ -121,7 +127,7 @@ async function saveGitHubUsernameCache(cache: any) {
 }
 
 // Returns the project root dir
-export const rootDir = require('path').dirname(require('path').dirname(__dirname));
+export const rootDir: string = require('path').dirname(require('path').dirname(__dirname));
 
 export function execCommand(command: string, options: any = null): Promise<string> {
 	options = options || {};
@@ -143,7 +149,7 @@ export function execCommand(command: string, options: any = null): Promise<strin
 	});
 }
 
-export function resolveRelativePathWithinDir(baseDir: string, ...relativePath: string[]) {
+export function resolveRelativePathWithinDir(baseDir: string, ...relativePath: string[]): string {
 	const path = require('path');
 	const resolvedBaseDir = path.resolve(baseDir);
 	const resolvedPath = path.resolve(baseDir, ...relativePath);
@@ -160,7 +166,8 @@ export function execCommandVerbose(commandName: string, args: string[] = []) {
 
 interface ExecCommandOptions {
 	showInput?: boolean;
-	showOutput?: boolean;
+	showStdout?: boolean;
+	showStderr?: boolean;
 	quiet?: boolean;
 }
 
@@ -173,14 +180,16 @@ interface ExecCommandOptions {
 export async function execCommand2(command: string | string[], options: ExecCommandOptions = null): Promise<string> {
 	options = {
 		showInput: true,
-		showOutput: true,
+		showStdout: true,
+		showStderr: true,
 		quiet: false,
 		...options,
 	};
 
 	if (options.quiet) {
 		options.showInput = false;
-		options.showOutput = false;
+		options.showStdout = false;
+		options.showStderr = false;
 	}
 
 	if (options.showInput) {
@@ -195,7 +204,8 @@ export async function execCommand2(command: string | string[], options: ExecComm
 	const executableName = args[0];
 	args.splice(0, 1);
 	const promise = execa(executableName, args);
-	if (options.showOutput) promise.stdout.pipe(process.stdout);
+	if (options.showStdout) promise.stdout.pipe(process.stdout);
+	if (options.showStderr) promise.stdout.pipe(process.stderr);
 	const result = await promise;
 	return result.stdout.trim();
 }

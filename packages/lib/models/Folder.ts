@@ -1,4 +1,4 @@
-import { FolderEntity, FolderIcon, NoteEntity } from '../services/database/types';
+import { defaultFolderIcon, FolderEntity, FolderIcon, NoteEntity } from '../services/database/types';
 import BaseModel, { DeleteOptions } from '../BaseModel';
 import time from '../time';
 import { _ } from '../locale';
@@ -282,7 +282,7 @@ export default class Folder extends BaseItem {
 		return this.db().selectAll(sql, [folderId]);
 	}
 
-	private static async rootSharedFolders(): Promise<FolderEntity[]> {
+	public static async rootSharedFolders(): Promise<FolderEntity[]> {
 		return this.db().selectAll('SELECT id, share_id FROM folders WHERE parent_id = "" AND share_id != ""');
 	}
 
@@ -767,7 +767,11 @@ export default class Folder extends BaseItem {
 	}
 
 	public static unserializeIcon(icon: string): FolderIcon {
-		return icon ? JSON.parse(icon) : null;
+		if (!icon) return null;
+		return {
+			...defaultFolderIcon(),
+			...JSON.parse(icon),
+		};
 	}
 
 }

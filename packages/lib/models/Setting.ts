@@ -217,6 +217,7 @@ class Setting extends BaseModel {
 
 	public static TIME_FORMAT_1 = 'HH:mm';
 	public static TIME_FORMAT_2 = 'h:mm A';
+	public static TIME_FORMAT_3 = 'HH.mm';
 
 	public static SHOULD_REENCRYPT_NO = 0; // Data doesn't need to be re-encrypted
 	public static SHOULD_REENCRYPT_YES = 1; // Data should be re-encrypted
@@ -532,7 +533,7 @@ class Setting extends BaseModel {
 					return value ? value.trim() : '';
 				},
 				public: true,
-				label: () => _('Region'),
+				label: () => _('S3 region'),
 				storage: SettingStorage.File,
 			},
 			'sync.8.username': {
@@ -543,7 +544,7 @@ class Setting extends BaseModel {
 					return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
 				},
 				public: true,
-				label: () => _('Access Key'),
+				label: () => _('S3 access key'),
 				storage: SettingStorage.File,
 			},
 			'sync.8.password': {
@@ -554,7 +555,7 @@ class Setting extends BaseModel {
 					return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
 				},
 				public: true,
-				label: () => _('Secret Key'),
+				label: () => _('S3 secret key'),
 				secure: true,
 			},
 			'sync.8.forcePathStyle': {
@@ -565,7 +566,7 @@ class Setting extends BaseModel {
 					return settings['sync.target'] == SyncTargetRegistry.nameToId('amazon_s3');
 				},
 				public: true,
-				label: () => _('Force Path Style'),
+				label: () => _('Force path style'),
 				storage: SettingStorage.File,
 			},
 			'sync.9.path': {
@@ -741,6 +742,7 @@ class Setting extends BaseModel {
 					const now = new Date('2017-01-30T20:30:00').getTime();
 					options[Setting.TIME_FORMAT_1] = time.formatMsToLocal(now, Setting.TIME_FORMAT_1);
 					options[Setting.TIME_FORMAT_2] = time.formatMsToLocal(now, Setting.TIME_FORMAT_2);
+					options[Setting.TIME_FORMAT_3] = time.formatMsToLocal(now, Setting.TIME_FORMAT_3);
 					return options;
 				},
 				storage: SettingStorage.File,
@@ -864,7 +866,7 @@ class Setting extends BaseModel {
 				section: 'appearance',
 				public: true,
 				label: () => _('Show sort order buttons'),
-				description: () => _('If true, sort order buttons (field + reverse) for notes are shown at the top of Note List.'),
+				// description: () => _('If true, sort order buttons (field + reverse) for notes are shown at the top of Note List.'),
 				appTypes: [AppType.Desktop],
 			},
 			'notes.perFieldReversalEnabled': {
@@ -1190,7 +1192,7 @@ class Setting extends BaseModel {
 			},
 
 
-			autoUpdateEnabled: { value: true, type: SettingItemType.Bool, storage: SettingStorage.File, section: 'application', public: platform !== 'linux', appTypes: [AppType.Desktop], label: () => _('Automatically update the application') },
+			autoUpdateEnabled: { value: true, type: SettingItemType.Bool, storage: SettingStorage.File, section: 'application', public: platform !== 'linux', appTypes: [AppType.Desktop], label: () => _('Automatically check for updates') },
 			'autoUpdate.includePreReleases': { value: false, type: SettingItemType.Bool, section: 'application', storage: SettingStorage.File, public: true, appTypes: [AppType.Desktop], label: () => _('Get pre-releases when checking for updates'), description: () => _('See the pre-release page for more details: %s', 'https://joplinapp.org/prereleases') },
 			'clipperServer.autoStart': { value: false, type: SettingItemType.Bool, storage: SettingStorage.File, public: false },
 			'sync.interval': {

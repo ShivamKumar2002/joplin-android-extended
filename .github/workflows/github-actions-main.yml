@@ -5,7 +5,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest, windows-2016]
     steps:
 
       # Silence apt-get update errors (for example when a module doesn't
@@ -49,6 +49,11 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '16'
+
+      - name: Install Yarn
+        run: |
+          # https://yarnpkg.com/getting-started/install
+          corepack enable
       
       # Login to Docker only if we're on a server release tag. If we run this on
       # a pull request it will fail because the PR doesn't have access to
@@ -69,6 +74,7 @@ jobs:
           CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           IS_CONTINUOUS_INTEGRATION: 1
+          BUILD_SEQUENCIAL: 1
         run: |
           "${GITHUB_WORKSPACE}/.github/scripts/run_ci.sh"
 
@@ -79,7 +85,60 @@ jobs:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           IS_CONTINUOUS_INTEGRATION: 1
+          BUILD_SEQUENCIAL: 1
+        # To ensure that the operations stop on failure, all commands
+        # should be on one line with "&&" in between.
         run: |
-          npm install
-          cd packages/app-desktop
-          npm run dist
+          yarn install && cd packages/app-desktop && yarn run dist
+
+      # Build and package the Windows app, without publishing it, just to
+      # verify that the build process hasn't been broken.
+      - name: Build Windows app (no publishing)
+        if: runner.os == 'Windows' && !startsWith(github.ref, 'refs/tags/v')
+        env:
+          IS_CONTINUOUS_INTEGRATION: 1
+          BUILD_SEQUENCIAL: 1
+          SERVER_REPOSITORY: joplin/server
+          SERVER_TAG_PREFIX: server
+        run: |
+          yarn install && cd packages/app-desktop && yarn run dist --publish=never
+
+  ServerDockerImage:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+
+      - name: Install Docker Engine
+        run: |
+          sudo apt-get install -y apt-transport-https
+          sudo apt-get install -y ca-certificates
+          sudo apt-get install -y curl
+          sudo apt-get install -y gnupg
+          sudo apt-get install -y lsb-release
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+          echo \
+              "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+              $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update || true
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install Yarn
+        run: |
+          # https://yarnpkg.com/getting-started/install
+          corepack enable
+
+      - name: Build Docker Image
+        env:
+          BUILD_SEQUENCIAL: 1
+        run: |
+          yarn install
+          yarn run buildServerDocker --tag-name server-v0.0.0 --repository joplin/server
+          

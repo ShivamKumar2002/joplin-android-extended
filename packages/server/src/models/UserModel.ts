@@ -1,7 +1,7 @@
 import BaseModel, { AclAction, SaveOptions, ValidateOptions } from './BaseModel';
 import { EmailSender, Item, NotificationLevel, Subscription, User, UserFlagType, Uuid } from '../services/database/types';
 import * as auth from '../utils/auth';
-import { ErrorUnprocessableEntity, ErrorForbidden, ErrorPayloadTooLarge, ErrorNotFound } from '../utils/errors';
+import { ErrorUnprocessableEntity, ErrorForbidden, ErrorPayloadTooLarge, ErrorNotFound, ErrorBadRequest } from '../utils/errors';
 import { ModelType } from '@joplin/lib/BaseModel';
 import { _ } from '@joplin/lib/locale';
 import { formatBytes, GB, MB } from '../utils/bytes';
@@ -275,18 +275,18 @@ export default class UserModel extends BaseModel<User> {
 		return !!s[0].length && !!s[1].length;
 	}
 
-	public async delete(id: string): Promise<void> {
-		const shares = await this.models().share().sharesByUser(id);
+	// public async delete(id: string): Promise<void> {
+	// 	const shares = await this.models().share().sharesByUser(id);
 
-		await this.withTransaction(async () => {
-			await this.models().item().deleteExclusivelyOwnedItems(id);
-			await this.models().share().delete(shares.map(s => s.id));
-			await this.models().userItem().deleteByUserId(id);
-			await this.models().session().deleteByUserId(id);
-			await this.models().notification().deleteByUserId(id);
-			await super.delete(id);
-		}, 'UserModel::delete');
-	}
+	// 	await this.withTransaction(async () => {
+	// 		await this.models().item().deleteExclusivelyOwnedItems(id);
+	// 		await this.models().share().delete(shares.map(s => s.id));
+	// 		await this.models().userItem().deleteByUserId(id);
+	// 		await this.models().session().deleteByUserId(id);
+	// 		await this.models().notification().deleteByUserId(id);
+	// 		await super.delete(id);
+	// 	}, 'UserModel::delete');
+	// }
 
 	private async confirmEmail(user: User) {
 		await this.save({ id: user.id, email_confirmed: 1 });
@@ -600,7 +600,12 @@ export default class UserModel extends BaseModel<User> {
 
 	private async syncInfo(userId: Uuid): Promise<any> {
 		const item = await this.models().item().loadByName(userId, 'info.json');
-		if (!item) throw new Error('Cannot find info.json file');
+
+		// We can get there if user 1 tries to share a notebook with user 2, but
+		// user 2 has never initiated a sync. In this case, they won't have the
+		// info.json file that we need, so we try to return an error message
+		// that makes sense.
+		if (!item) throw new ErrorBadRequest('The account of this user is not correctly initialised (missing info.json)');
 		const withContent = await this.models().item().loadWithContent(item.id);
 		return JSON.parse(withContent.content.toString());
 	}

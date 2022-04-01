@@ -5,9 +5,12 @@ import config from '../config';
 import { filename } from '@joplin/lib/path-utils';
 import { NotificationView } from '../utils/types';
 import { User } from '../services/database/types';
-import { makeUrl, UrlType } from '../utils/routeUtils';
+import { makeUrl, SubPath, UrlType } from '../utils/routeUtils';
 import MarkdownIt = require('markdown-it');
 import { headerAnchor } from '@joplin/renderer';
+import { _ } from '@joplin/lib/locale';
+import { adminDashboardUrl, adminEmailsUrl, adminTasksUrl, adminUserDeletionsUrl, adminUsersUrl, changesUrl, homeUrl, itemsUrl } from '../utils/urlUtils';
+import { MenuItem, setSelectedMenu } from '../utils/views/menu';
 
 export interface RenderOptions {
 	partials?: any;
@@ -26,6 +29,8 @@ export interface View {
 	partials?: string[];
 	cssFiles?: string[];
 	jsFiles?: string[];
+	strings?: Record<string, string>; // List of translatable strings
+	sidebarMenu?: MenuItem[];
 }
 
 interface GlobalParams {
@@ -45,6 +50,11 @@ interface GlobalParams {
 	isJoplinCloud?: boolean;
 	impersonatorAdminSessionId?: string;
 	csrfTag?: string;
+	s?: Record<string, string>; // List of translatable strings
+	isAdminPage?: boolean;
+	adminMenu?: MenuItem[];
+	navbarMenu?: MenuItem[];
+	currentPath?: SubPath;
 }
 
 export function isView(o: any): boolean {
@@ -90,6 +100,70 @@ export default class MustacheService {
 	private layoutPath(name: string): string {
 		if (!name) name = 'default';
 		return `${config().layoutDir}/${name}.mustache`;
+	}
+
+	private makeAdminMenu(selectedPath: SubPath): MenuItem[] {
+		const output: MenuItem[] = [
+			{
+				title: _('General'),
+				children: [
+					{
+						title: _('Dashboard'),
+						url: adminDashboardUrl(),
+					},
+					{
+						title: _('Users'),
+						url: adminUsersUrl(),
+					},
+					{
+						title: _('User deletions'),
+						url: adminUserDeletionsUrl(),
+					},
+					{
+						title: _('Tasks'),
+						url: adminTasksUrl(),
+					},
+					{
+						title: _('Emails'),
+						url: adminEmailsUrl(),
+					},
+				],
+			},
+		];
+
+		return setSelectedMenu(selectedPath, output);
+	}
+
+	private makeNavbar(selectedPath: SubPath, isAdmin: boolean): MenuItem[] {
+		let output: MenuItem[] = [
+			{
+				title: _('Home'),
+				url: homeUrl(),
+			},
+		];
+
+		if (isAdmin) {
+			output = output.concat([
+				{
+					title: _('Items'),
+					url: itemsUrl(),
+				},
+				{
+					title: _('Logs'),
+					url: changesUrl(),
+				},
+				{
+					title: _('Admin'),
+					url: adminDashboardUrl(),
+					icon: 'fas fa-hammer',
+					selectedCondition: (selectedPath: SubPath) => {
+						return selectedPath.schema.startsWith('admin/') || selectedPath.schema === 'admin';
+					},
+				},
+			]);
+		}
+
+		return setSelectedMenu(selectedPath, output);
 	}
 
 	private get defaultLayoutOptions(): GlobalParams {
@@ -176,27 +250,46 @@ export default class MustacheService {
 		throw new Error(`Unsupported view extension: ${ext}`);
 	}
 
+	private formatPageName(name: string): string {
+		return name.replace(/[/\\]/g, '-');
+	}
+
 	public async renderView(view: View, globalParams: GlobalParams = null): Promise<string> {
 		const cssFiles = this.resolvesFilePaths('css', view.cssFiles || []);
 		const jsFiles = this.resolvesFilePaths('js', view.jsFiles || []);
 		const filePath = await this.viewFilePath(view.path);
+		const isAdminPage = view.path.startsWith('/admin/');
 
 		globalParams = {
 			...this.defaultLayoutOptions,
 			...globalParams,
+			adminMenu: globalParams ? this.makeAdminMenu(globalParams.currentPath) : null,
+			navbarMenu: this.makeNavbar(globalParams?.currentPath, globalParams?.owner ? !!globalParams.owner.is_admin : false),
 			userDisplayName: this.userDisplayName(globalParams ? globalParams.owner : null),
+			isAdminPage,
+			s: {
+				home: _('Home'),
+				users: _('Users'),
+				items: _('Items'),
+				log: _('Log'),
+				tasks: _('Tasks'),
+				help: _('Help'),
+				logout: _('Logout'),
+				admin: _('Admin'),
+			},
 		};
 
 		const contentHtml = await this.renderFileContent(filePath, view, globalParams);
 
 		const layoutView: any = {
 			global: globalParams,
-			pageName: view.name,
+			pageName: this.formatPageName(view.name),
 			pageTitle: view.titleOverride ? view.title : `${config().appName} - ${view.title}`,
 			contentHtml: contentHtml,
 			cssFiles: cssFiles,
 			jsFiles: jsFiles,
 			navbar: view.navbar,
+			sidebarMenu: view.sidebarMenu,
 			...view.content,
 		};
 

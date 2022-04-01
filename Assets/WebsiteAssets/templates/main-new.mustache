@@ -23,7 +23,7 @@ https://github.com/laurent22/joplin/blob/dev/{{{sourceMarkdownFile}}}
 		<link rel="icon" href="{{imageBaseUrl}}/favicon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="theme-color" content="#000000" />
-		<meta name="description" content="Joplin, the open source note-taking application" />
+		{{> openGraphTags}}
 		<link
 			rel="stylesheet"
 			href="{{cssBaseUrl}}/bootstrap5.0.2.min.css"
@@ -63,13 +63,15 @@ https://github.com/laurent22/joplin/blob/dev/{{{sourceMarkdownFile}}}
 								Running in {{env}} mode!
 							</div>
 							{{{contentHtml}}}
-							{{#showImproveThisDoc}}
+							{{#showBottomLinks}}
 								<div class="bottom-links">
-									<a href="https://github.com/laurent22/joplin/blob/dev/{{{sourceMarkdownFile}}}">
-										<i class="fab fa-github"></i> Improve this doc
-									</a>
+									{{#showImproveThisDoc}}
+										<a class="bottom-link" href="https://github.com/laurent22/joplin/blob/dev/{{{sourceMarkdownFile}}}">
+											<i class="fab fa-github"></i> Improve this doc
+										</a>
+									{{/showImproveThisDoc}}
 								</div>
-							{{/showImproveThisDoc}}
+							{{/showBottomLinks}}
 						</div>
 					</div>
 				</div>

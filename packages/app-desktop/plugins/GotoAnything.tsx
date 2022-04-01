@@ -19,6 +19,7 @@ const { mergeOverlappingIntervals } = require('@joplin/lib/ArrayUtils.js');
 import markupLanguageUtils from '../utils/markupLanguageUtils';
 import focusEditorIfEditorCommand from '@joplin/lib/services/commands/focusEditorIfEditorCommand';
 import Logger from '@joplin/lib/Logger';
+import { MarkupToHtml } from '@joplin/renderer';
 
 const logger = Logger.create('GotoAnything');
 
@@ -81,7 +82,7 @@ class Dialog extends React.PureComponent<Props, State> {
 	private inputRef: any;
 	private itemListRef: any;
 	private listUpdateIID_: any;
-	private markupToHtml_: any;
+	private markupToHtml_: MarkupToHtml;
 	private userCallback_: any = null;
 
 	constructor(props: Props) {
@@ -496,10 +497,10 @@ class Dialog extends React.PureComponent<Props, State> {
 		const isSelected = item.id === this.state.selectedItemId;
 		const rowStyle = isSelected ? style.rowSelected : style.row;
 		const titleHtml = item.fragments
-			? `<span style="font-weight: bold; color: ${theme.colorBright};">${item.title}</span>`
-			: surroundKeywords(this.state.keywords, item.title, `<span style="font-weight: bold; color: ${theme.colorBright};">`, '</span>', { escapeHtml: true });
+			? `<span style="font-weight: bold; color: ${theme.color};">${item.title}</span>`
+			: surroundKeywords(this.state.keywords, item.title, `<span style="font-weight: bold; color: ${theme.searchMarkerColor}; background-color: ${theme.searchMarkerBackgroundColor}">`, '</span>', { escapeHtml: true });
 
-		const fragmentsHtml = !item.fragments ? null : surroundKeywords(this.state.keywords, item.fragments, `<span style="font-weight: bold; color: ${theme.colorBright};">`, '</span>', { escapeHtml: true });
+		const fragmentsHtml = !item.fragments ? null : surroundKeywords(this.state.keywords, item.fragments, `<span style="color: ${theme.searchMarkerColor}; background-color: ${theme.searchMarkerBackgroundColor}">`, '</span>', { escapeHtml: true });
 
 		const folderIcon = <i style={{ fontSize: theme.fontSize, marginRight: 2 }} className="fa fa-book" />;
 		const pathComp = !item.path ? null : <div style={style.rowPath}>{folderIcon} {item.path}</div>;

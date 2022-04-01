@@ -7,7 +7,7 @@ import { commandAttachFileToBody, handlePasteEvent } from '../../utils/resourceH
 import { ScrollOptions, ScrollOptionTypes } from '../../utils/types';
 import { CommandValue } from '../../utils/types';
 import { usePrevious, cursorPositionToTextOffset } from './utils';
-import useScrollHandler, { translateScrollPercentToEditor, translateScrollPercentToViewer } from './utils/useScrollHandler';
+import useScrollHandler from './utils/useScrollHandler';
 import useElementSize from '@joplin/lib/hooks/useElementSize';
 import Toolbar from './Toolbar';
 import styles_ from './styles';
@@ -36,6 +36,8 @@ const MenuItem = bridge().MenuItem;
 import { reg } from '@joplin/lib/registry';
 import ErrorBoundary from '../../../ErrorBoundary';
 import { MarkupToHtmlOptions } from '../../utils/useMarkupToHtml';
+import eventManager from '@joplin/lib/eventManager';
+import { EditContextMenuFilterObject } from '@joplin/lib/services/plugins/api/JoplinWorkspace';
 
 const menuUtils = new MenuUtils(CommandService.instance());
 
@@ -65,7 +67,8 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 
 	usePluginServiceRegistration(ref);
 
-	const { resetScroll, editor_scroll, setEditorPercentScroll, setViewerPercentScroll } = useScrollHandler(editorRef, webviewRef, props.onScroll);
+	const { resetScroll, editor_scroll, setEditorPercentScroll, setViewerPercentScroll, editor_resize, editor_update, getLineScrollPercent,
+	} = useScrollHandler(editorRef, webviewRef, props.onScroll);
 
 	const codeMirror_change = useCallback((newBody: string) => {
 		props_onChangeRef.current({ changeId: null, content: newBody });
@@ -115,10 +118,9 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 					if (!webviewRef.current) return;
 					webviewRef.current.wrappedInstance.send('scrollToHash', options.value as string);
 				} else if (options.type === ScrollOptionTypes.Percent) {
-					const editorPercent = options.value as number;
-					setEditorPercentScroll(editorPercent);
-					const viewerPercent = translateScrollPercentToViewer(editorRef, webviewRef, editorPercent);
-					setViewerPercentScroll(viewerPercent);
+					const percent = options.value as number;
+					setEditorPercentScroll(percent);
+					setViewerPercentScroll(percent);
 				} else {
 					throw new Error(`Unsupported scroll options: ${options.type}`);
 				}
@@ -234,9 +236,11 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 							if (!('args' in value)) value.args = [];
 
 							if (editorRef.current[value.name]) {
-								editorRef.current[value.name](...value.args);
+								const result = editorRef.current[value.name](...value.args);
+								return result;
 							} else if (editorRef.current.commandExists(value.name)) {
-								editorRef.current.execCommand(value.name);
+								const result = editorRef.current.execCommand(value.name);
+								return result;
 							} else {
 								reg.logger().warn('CodeMirror execCommand: unsupported command: ', value.name);
 							}
@@ -336,7 +340,7 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		async function loadScripts() {
 			const scriptsToLoad: {src: string; id: string; loaded: boolean}[] = [
 				{
-					src: 'node_modules/codemirror/addon/dialog/dialog.css',
+					src: `${bridge().vendorDir()}/lib/codemirror/addon/dialog/dialog.css`,
 					id: 'codemirrorDialogStyle',
 					loaded: false,
 				},
@@ -351,7 +355,7 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				if (theme.indexOf('solarized') >= 0) theme = 'solarized';
 
 				scriptsToLoad.push({
-					src: `node_modules/codemirror/theme/${theme}.css`,
+					src: `${bridge().vendorDir()}/lib/codemirror/theme/${theme}.css`,
 					id: `codemirrorTheme${theme}`,
 					loaded: false,
 				});
@@ -498,10 +502,6 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				padding-left: .2em;
 			}
 
-			div.CodeMirror span.cm-strong {
-				color: ${theme.colorBright};
-			}
-
 			div.CodeMirror span.cm-hr {
 				color: ${theme.dividerColor};
 			}
@@ -515,8 +515,9 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				color: ${theme.searchMarkerColor} !important;
 			}
 
+			/* We need !important because the search marker is overridden by CodeMirror's own text selection marker */
 			.cm-search-marker-selected {
-				background: ${theme.selectedColor2};
+				background: ${theme.selectedColor2} !important;
 				color: ${theme.color2} !important;
 			}
 
@@ -576,22 +577,18 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		const arg0 = args && args.length >= 1 ? args[0] : null;
 
 		if (msg.indexOf('checkboxclick:') === 0) {
-			const newBody = shared.toggleCheckbox(msg, props.content);
+			const { line, from, to } = shared.toggleCheckboxRange(msg, props.content);
 			if (editorRef.current) {
-				editorRef.current.updateBody(newBody);
+				// To cancel CodeMirror's layout drift, the scroll position
+				// is recorded before updated, and then it is restored.
+				// Ref. https://github.com/laurent22/joplin/issues/5890
+				const percent = getLineScrollPercent();
+				editorRef.current.replaceRange(line, from, to);
+				setEditorPercentScroll(percent);
 			}
 		} else if (msg === 'percentScroll') {
-			const viewerPercent = arg0;
-			const editorPercent = translateScrollPercentToEditor(editorRef, webviewRef, viewerPercent);
-			setEditorPercentScroll(editorPercent);
-		} else if (msg === 'syncViewerScrollWithEditor') {
-			const force = !!arg0;
-			webviewRef.current?.wrappedInstance?.refreshSyncScrollMap(force);
-			const editorPercent = Math.max(0, Math.min(1, editorRef.current?.getScrollPercent()));
-			if (!isNaN(editorPercent)) {
-				const viewerPercent = translateScrollPercentToViewer(editorRef, webviewRef, editorPercent);
-				setViewerPercentScroll(viewerPercent);
-			}
+			const percent = arg0;
+			setEditorPercentScroll(percent);
 		} else {
 			props.onMessage(event);
 		}
@@ -644,6 +641,7 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		const options: any = {
 			pluginAssets: renderedBody.pluginAssets,
 			downloadResources: Setting.value('sync.resourceDownloadMode'),
+			markupLineCount: editorRef.current?.lineCount() || 0,
 		};
 
 		// It seems when there's an error immediately when the component is
@@ -652,7 +650,6 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		// Since we can't do much about it we just print an error.
 		if (webviewRef.current && webviewRef.current.wrappedInstance) {
 			webviewRef.current.wrappedInstance.send('setHtml', renderedBody.html, options);
-			webviewRef.current.wrappedInstance.refreshSyncScrollMap(true);
 		} else {
 			console.error('Trying to set HTML on an undefined webview ref');
 		}
@@ -735,15 +732,19 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 	// It might be buggy, refer to the below issue
 	// https://github.com/laurent22/joplin/pull/3974#issuecomment-718936703
 	useEffect(() => {
-		function pointerInsideEditor(x: number, y: number) {
+		function pointerInsideEditor(params: any) {
+			const x = params.x, y = params.y, isEditable = params.isEditable, inputFieldType = params.inputFieldType;
 			const elements = document.getElementsByClassName('codeMirrorEditor');
-			if (!elements.length) return null;
+
+			// inputFieldType: The input field type of CodeMirror is "textarea" so the inputFieldType = "none",
+			// and any single-line input above codeMirror has inputFieldType value according to the type of input e.g.(text = plainText, password = password, ...).
+			if (!elements.length || !isEditable || inputFieldType !== 'none') return null;
 			const rect = convertToScreenCoordinates(Setting.value('windowContentZoomFactor'), elements[0].getBoundingClientRect());
 			return rect.x < x && rect.y < y && rect.right > x && rect.bottom > y;
 		}
 
-		function onContextMenu(_event: any, params: any) {
-			if (!pointerInsideEditor(params.x, params.y)) return;
+		async function onContextMenu(_event: any, params: any) {
+			if (!pointerInsideEditor(params)) return;
 
 			const menu = new Menu();
 
@@ -796,6 +797,23 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				editorRef.current.alignSelection(params);
 			}
 
+			let filterObject: EditContextMenuFilterObject = {
+				items: [],
+			};
+
+			filterObject = await eventManager.filterEmit('editorContextMenu', filterObject);
+
+			for (const item of filterObject.items) {
+				menu.append(new MenuItem({
+					label: item.label,
+					click: async () => {
+						const args = item.commandArgs || [];
+						void CommandService.instance().execute(item.commandName, ...args);
+					},
+					type: item.type,
+				}));
+			}
+
 			menuUtils.pluginContextMenuItems(props.plugins, MenuItemLocation.EditorContextMenu).forEach((item: any) => {
 				menu.append(new MenuItem(item));
 			});
@@ -829,6 +847,8 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 					onScroll={editor_scroll}
 					onEditorPaste={onEditorPaste}
 					isSafeMode={props.isSafeMode}
+					onResize={editor_resize}
+					onUpdate={editor_update}
 				/>
 			</div>
 		);

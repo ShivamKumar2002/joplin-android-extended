@@ -9,6 +9,8 @@ import { Config } from '../utils/types';
 import personalizedUserContentBaseUrl from '@joplin/lib/services/joplinServer/personalizedUserContentBaseUrl';
 import Logger from '@joplin/lib/Logger';
 import dbuuid from '../utils/dbuuid';
+import { defaultPagination, PaginatedResults, Pagination } from './utils/pagination';
+import { unique } from '../utils/array';
 
 const logger = Logger.create('BaseModel');
 
@@ -164,6 +166,10 @@ export default abstract class BaseModel<T> {
 		return true;
 	}
 
+	protected hasUpdatedTime(): boolean {
+		return this.autoTimestampEnabled();
+	}
+
 	protected get hasParentId(): boolean {
 		return false;
 	}
@@ -232,6 +238,28 @@ export default abstract class BaseModel<T> {
 		return rows as T[];
 	}
 
+	public async allPaginated(pagination: Pagination, options: LoadOptions = {}): Promise<PaginatedResults<T>> {
+		pagination = {
+			...defaultPagination(),
+			...pagination,
+		};
+
+		const itemCount = await this.count();
+
+		const items = await this
+			.db(this.tableName)
+			.select(this.selectFields(options))
+			.orderBy(pagination.order[0].by, pagination.order[0].dir)
+			.offset((pagination.page - 1) * pagination.limit)
+			.limit(pagination.limit) as T[];
+
+		return {
+			items,
+			page_count: Math.ceil(itemCount / pagination.limit),
+			has_more: items.length >= pagination.limit,
+		};
+	}
+
 	public async count(): Promise<number> {
 		const r = await this
 			.db(this.tableName)
@@ -291,7 +319,7 @@ export default abstract class BaseModel<T> {
 			if (isNew) {
 				(toSave as WithDates).created_time = timestamp;
 			}
-			(toSave as WithDates).updated_time = timestamp;
+			if (this.hasUpdatedTime()) (toSave as WithDates).updated_time = timestamp;
 		}
 
 		if (options.skipValidation !== true) object = await this.validate(object, { isNew: isNew, rules: options.validationRules ? options.validationRules : {} });
@@ -316,6 +344,7 @@ export default abstract class BaseModel<T> {
 
 	public async loadByIds(ids: string[], options: LoadOptions = {}): Promise<T[]> {
 		if (!ids.length) return [];
+		ids = unique(ids);
 		return this.db(this.tableName).select(options.fields || this.defaultFields).whereIn('id', ids);
 	}
 
@@ -343,7 +372,7 @@ export default abstract class BaseModel<T> {
 		return !!o;
 	}
 
-	public async load(id: string, options: LoadOptions = {}): Promise<T> {
+	public async load(id: Uuid | number, options: LoadOptions = {}): Promise<T> {
 		if (!id) throw new Error('id cannot be empty');
 
 		return this.db(this.tableName).select(options.fields || this.defaultFields).where({ id: id }).first();

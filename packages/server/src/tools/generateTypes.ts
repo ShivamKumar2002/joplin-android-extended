@@ -35,6 +35,8 @@ const config = {
 		'main.user_items': 'WithDates',
 		'main.users': 'WithDates, WithUuid',
 		'main.events': 'WithUuid',
+		'main.user_deletions': 'WithDates',
+		'main.backup_items': 'WithCreatedDate',
 	},
 };
 
@@ -58,6 +60,11 @@ const propertyTypes: Record<string, string> = {
 	'users.total_item_size': 'number',
 	'events.created_time': 'number',
 	'events.type': 'EventType',
+	'user_deletions.start_time': 'number',
+	'user_deletions.end_time': 'number',
+	'user_deletions.scheduled_time': 'number',
+	'users.disabled_time': 'number',
+	'backup_items.content': 'Buffer',
 };
 
 function insertContentIntoFile(filePath: string, markerOpen: string, markerClose: string, contentToInsert: string): void {
@@ -86,6 +93,10 @@ function createTypeString(table: any) {
 
 		if (table.extends && table.extends.indexOf('WithDates') >= 0) {
 			if (['created_time', 'updated_time'].includes(name)) continue;
+		}
+
+		if (table.extends && table.extends.indexOf('WithCreatedDate') >= 0) {
+			if (['created_time'].includes(name)) continue;
 		}
 
 		if (table.extends && table.extends.indexOf('WithUuid') >= 0) {
@@ -142,7 +153,7 @@ async function main() {
 		tableStrings.push(createRuntimeObject(table));
 	}
 
-	let content = `// Auto-generated using \`npm run generate-types\`\n${typeStrings.join('\n\n')}`;
+	let content = `// Auto-generated using \`yarn run generate-types\`\n${typeStrings.join('\n\n')}`;
 	content += '\n\n';
 	content += `export const databaseSchema: DatabaseTables = {\n${tableStrings.join('\n')}\n};`;
 
