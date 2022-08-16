@@ -22,7 +22,7 @@ import TaskQueue from './TaskQueue';
 import ItemUploader from './services/synchronizer/ItemUploader';
 import { FileApi, RemoteItem } from './file-api';
 import JoplinDatabase from './JoplinDatabase';
-import { fetchSyncInfo, getActiveMasterKey, localSyncInfo, mergeSyncInfos, saveLocalSyncInfo, SyncInfo, syncInfoEquals, uploadSyncInfo } from './services/synchronizer/syncInfoUtils';
+import { fetchSyncInfo, getActiveMasterKey, localSyncInfo, mergeSyncInfos, saveLocalSyncInfo, setMasterKeyHasBeenUsed, SyncInfo, syncInfoEquals, uploadSyncInfo } from './services/synchronizer/syncInfoUtils';
 import { getMasterPassword, setupAndDisableEncryption, setupAndEnableEncryption } from './services/e2ee/utils';
 import { generateKeyPair } from './services/e2ee/ppk';
 import syncDebugLog from './services/synchronizer/syncDebugLog';
@@ -241,12 +241,12 @@ export default class Synchronizer {
 		logger.info('Operations completed: ');
 		for (const n in report) {
 			if (!report.hasOwnProperty(n)) continue;
-			if (n == 'errors') continue;
-			if (n == 'starting') continue;
-			if (n == 'finished') continue;
-			if (n == 'state') continue;
-			if (n == 'startTime') continue;
-			if (n == 'completedTime') continue;
+			if (n === 'errors') continue;
+			if (n === 'starting') continue;
+			if (n === 'finished') continue;
+			if (n === 'state') continue;
+			if (n === 'startTime') continue;
+			if (n === 'completedTime') continue;
 			logger.info(`${n}: ${report[n] ? report[n] : '-'}`);
 		}
 		const folderCount = await Folder.count();
@@ -266,7 +266,7 @@ export default class Synchronizer {
 	}
 
 	async cancel() {
-		if (this.cancelling_ || this.state() == 'idle') return;
+		if (this.cancelling_ || this.state() === 'idle') return;
 
 		// Stop queue but don't set it to null as it may be used to
 		// retrieve the last few downloads.
@@ -277,7 +277,7 @@ export default class Synchronizer {
 
 		return new Promise((resolve) => {
 			const iid = shim.setInterval(() => {
-				if (this.state() == 'idle') {
+				if (this.state() === 'idle') {
 					shim.clearInterval(iid);
 					resolve(null);
 				}
@@ -360,7 +360,7 @@ export default class Synchronizer {
 	public async start(options: any = null) {
 		if (!options) options = {};
 
-		if (this.state() != 'idle') {
+		if (this.state() !== 'idle') {
 			const error: any = new Error(sprintf('Synchronisation is already in progress. State: %s', this.state()));
 			error.code = 'alreadyStarted';
 			throw error;
@@ -439,10 +439,13 @@ export default class Synchronizer {
 				let remoteInfo = await fetchSyncInfo(this.api());
 				logger.info('Sync target remote info:', remoteInfo);
 
+				let syncTargetIsNew = false;
+
 				if (!remoteInfo.version) {
 					logger.info('Sync target is new - setting it up...');
 					await this.migrationHandler().upgrade(Setting.value('syncVersion'));
 					remoteInfo = await fetchSyncInfo(this.api());
+					syncTargetIsNew = true;
 				}
 
 				logger.info('Sync target is already setup - checking it...');
@@ -455,11 +458,16 @@ export default class Synchronizer {
 
 				localInfo = await this.setPpkIfNotExist(localInfo, remoteInfo);
 
+				if (syncTargetIsNew && localInfo.activeMasterKeyId) {
+					localInfo = setMasterKeyHasBeenUsed(localInfo, localInfo.activeMasterKeyId);
+				}
+
 				// console.info('LOCAL', localInfo);
 				// console.info('REMOTE', remoteInfo);
 
 				if (!syncInfoEquals(localInfo, remoteInfo)) {
-					const newInfo = mergeSyncInfos(localInfo, remoteInfo);
+					let newInfo = mergeSyncInfos(localInfo, remoteInfo);
+					if (newInfo.activeMasterKeyId) newInfo = setMasterKeyHasBeenUsed(newInfo, newInfo.activeMasterKeyId);
 					const previousE2EE = localInfo.e2ee;
 					logger.info('Sync target info differs between local and remote - merging infos: ', newInfo.toObject());
 
@@ -633,7 +641,7 @@ export default class Synchronizer {
 
 						this.logSyncOperation(action, local, remote, reason);
 
-						if (local.type_ == BaseModel.TYPE_RESOURCE && (action == 'createRemote' || action === 'updateRemote')) {
+						if (local.type_ === BaseModel.TYPE_RESOURCE && (action === 'createRemote' || action === 'updateRemote')) {
 							const localState = await Resource.localState(local.id);
 							if (localState.fetch_status !== Resource.FETCH_STATUS_DONE) {
 								// This condition normally shouldn't happen
@@ -695,7 +703,7 @@ export default class Synchronizer {
 							}
 						}
 
-						if (action == 'createRemote' || action == 'updateRemote') {
+						if (action === 'createRemote' || action === 'updateRemote') {
 							let canSync = true;
 							try {
 								if (this.testingHooks_.indexOf('notesRejectedByTarget') >= 0 && local.type_ === BaseModel.TYPE_NOTE) throw new JoplinError('Testing rejectedByTarget', 'rejectedByTarget');
@@ -731,7 +739,7 @@ export default class Synchronizer {
 
 								await ItemClass.saveSyncTime(syncTargetId, local, local.updated_time);
 							}
-						} else if (action == 'itemConflict') {
+						} else if (action === 'itemConflict') {
 							// ------------------------------------------------------------------------------
 							// For non-note conflicts, we take the remote version (i.e. the version that was
 							// synced first) and overwrite the local content.
@@ -748,7 +756,7 @@ export default class Synchronizer {
 									trackDeleted: false,
 								});
 							}
-						} else if (action == 'noteConflict') {
+						} else if (action === 'noteConflict') {
 							// ------------------------------------------------------------------------------
 							// First find out if the conflict matters. For example, if the conflict is on the title or body
 							// we want to preserve all the changes. If it's on todo_completed it doesn't really matter
@@ -768,7 +776,7 @@ export default class Synchronizer {
 							if (mustHandleConflict) {
 								await Note.createConflictNote(local, ItemChange.SOURCE_SYNC);
 							}
-						} else if (action == 'resourceConflict') {
+						} else if (action === 'resourceConflict') {
 							// ------------------------------------------------------------------------------
 							// Unlike notes we always handle the conflict for resources
 							// ------------------------------------------------------------------------------
@@ -943,7 +951,7 @@ export default class Synchronizer {
 
 						this.logSyncOperation(action, local, remote, reason);
 
-						if (action == 'createLocal' || action == 'updateLocal') {
+						if (action === 'createLocal' || action === 'updateLocal') {
 							if (content === null) {
 								logger.warn(`Remote has been deleted between now and the delta() call? In that case it will be handled during the next sync: ${path}`);
 								continue;
@@ -963,10 +971,10 @@ export default class Synchronizer {
 								nextQueries: BaseItem.updateSyncTimeQueries(syncTargetId, content, time.unixMs()),
 								changeSource: ItemChange.SOURCE_SYNC,
 							};
-							if (action == 'createLocal') options.isNew = true;
-							if (action == 'updateLocal') options.oldItem = local;
+							if (action === 'createLocal') options.isNew = true;
+							if (action === 'updateLocal') options.oldItem = local;
 
-							const creatingOrUpdatingResource = content.type_ == BaseModel.TYPE_RESOURCE && (action == 'createLocal' || action == 'updateLocal');
+							const creatingOrUpdatingResource = content.type_ === BaseModel.TYPE_RESOURCE && (action === 'createLocal' || action === 'updateLocal');
 
 							if (creatingOrUpdatingResource) {
 								if (content.size >= this.maxResourceSize()) {
@@ -1010,8 +1018,8 @@ export default class Synchronizer {
 							// }
 
 							if (content.encryption_applied) this.dispatch({ type: 'SYNC_GOT_ENCRYPTED_ITEM' });
-						} else if (action == 'deleteLocal') {
-							if (local.type_ == BaseModel.TYPE_FOLDER) {
+						} else if (action === 'deleteLocal') {
+							if (local.type_ === BaseModel.TYPE_FOLDER) {
 								localFoldersToDelete.push(local);
 								continue;
 							}

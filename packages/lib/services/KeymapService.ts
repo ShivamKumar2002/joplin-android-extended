@@ -55,6 +55,9 @@ const defaultKeymapItems = {
 		{ accelerator: 'Option+Cmd+A', command: 'editor.sortSelectedLines' },
 		{ accelerator: 'Option+Up', command: 'editor.swapLineUp' },
 		{ accelerator: 'Option+Down', command: 'editor.swapLineDown' },
+		{ accelerator: 'Option+Cmd+1', command: 'switchProfile1' },
+		{ accelerator: 'Option+Cmd+2', command: 'switchProfile2' },
+		{ accelerator: 'Option+Cmd+3', command: 'switchProfile3' },
 	],
 	default: [
 		{ accelerator: 'Ctrl+N', command: 'newNote' },
@@ -97,6 +100,9 @@ const defaultKeymapItems = {
 		{ accelerator: 'Ctrl+Alt+S', command: 'editor.sortSelectedLines' },
 		{ accelerator: 'Alt+Up', command: 'editor.swapLineUp' },
 		{ accelerator: 'Alt+Down', command: 'editor.swapLineDown' },
+		{ accelerator: 'Ctrl+Alt+1', command: 'switchProfile1' },
+		{ accelerator: 'Ctrl+Alt+2', command: 'switchProfile2' },
+		{ accelerator: 'Ctrl+Alt+3', command: 'switchProfile3' },
 	],
 };
 
@@ -335,7 +341,7 @@ export default class KeymapService extends BaseService {
 			if (usedAccelerators.has(itemAccelerator)) {
 				const originalItem = (proposedKeymapItem && proposedKeymapItem.accelerator === itemAccelerator)
 					? proposedKeymapItem
-					: Object.values(this.keymap).find(_item => _item.accelerator == itemAccelerator);
+					: Object.values(this.keymap).find(_item => _item.accelerator === itemAccelerator);
 
 				throw new Error(_(
 					'Accelerator "%s" is used for "%s" and "%s" commands. This may lead to unexpected behaviour.',

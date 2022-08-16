@@ -3,19 +3,25 @@ import { rootDir } from '../tool-utils';
 import { pressCarouselItems } from './utils/pressCarousel';
 import { getMarkdownIt, loadMustachePartials, markdownToPageHtml, renderMustache } from './utils/render';
 import { AssetUrls, Env, PlanPageParams, Sponsors, TemplateParams } from './utils/types';
-import { getPlans, loadStripeConfig } from '@joplin/lib/utils/joplinCloud';
-import { MarkdownAndFrontMatter, stripOffFrontMatter } from './utils/frontMatter';
+import { createFeatureTableMd, getPlans, loadStripeConfig } from '@joplin/lib/utils/joplinCloud';
+import { stripOffFrontMatter } from './utils/frontMatter';
 import { dirname, basename } from 'path';
 import { readmeFileTitle, replaceGitHubByWebsiteLinks } from './utils/parser';
 import { extractOpenGraphTags } from './utils/openGraph';
-const moment = require('moment');
+import { readCredentialFileJson } from '@joplin/lib/utils/credentialFiles';
+import { getNewsDateString } from './utils/news';
+
+interface BuildConfig {
+	env: Env;
+}
+
+const buildConfig = readCredentialFileJson<BuildConfig>('website-build.json', {
+	env: Env.Prod,
+});
 
 const glob = require('glob');
 const path = require('path');
 const md5File = require('md5-file/promise');
-
-const env = Env.Prod;
-
 const docDir = `${dirname(dirname(dirname(dirname(__dirname))))}/joplin-website/docs`;
 
 if (!pathExistsSync(docDir)) throw new Error(`Doc directory does not exist: ${docDir}`);
@@ -25,7 +31,7 @@ const readmeDir = `${rootDir}/readme`;
 const mainTemplateHtml = readFileSync(`${websiteAssetDir}/templates/main-new.mustache`, 'utf8');
 const frontTemplateHtml = readFileSync(`${websiteAssetDir}/templates/front.mustache`, 'utf8');
 const plansTemplateHtml = readFileSync(`${websiteAssetDir}/templates/plans.mustache`, 'utf8');
-const stripeConfig = loadStripeConfig(env, `${rootDir}/packages/server/stripeConfig.json`);
+const stripeConfig = loadStripeConfig(buildConfig.env, `${rootDir}/packages/server/stripeConfig.json`);
 const partialDir = `${websiteAssetDir}/templates/partials`;
 
 const discussLink = 'https://discourse.joplinapp.org/c/news/9';
@@ -82,7 +88,7 @@ async function getAssetUrls(): Promise<AssetUrls> {
 
 function defaultTemplateParams(assetUrls: AssetUrls): TemplateParams {
 	return {
-		env,
+		env: buildConfig.env,
 		baseUrl,
 		imageBaseUrl: `${baseUrl}/images`,
 		cssBaseUrl,
@@ -170,19 +176,6 @@ async function loadSponsors(): Promise<Sponsors> {
 	});
 	return output;
 }
-
-const getNewsDateString = (info: MarkdownAndFrontMatter, mdFilePath: string): string => {
-	// If the date is set in the metadata, we get it from there. Otherwise we
-	// derive it from the filename (eg. 20220224-release-2-7.md)
-
-	if (info.created) {
-		return moment(info.created).format('D MMM YYYY');
-	} else {
-		const filenameNoExt = basename(mdFilePath, '.md');
-		const s = filenameNoExt.split('-');
-		return moment(s[0], 'YYYYMMDD').format('D MMM YYYY');
-	}
-};
 
 const processNewsMarkdown = (md: string, mdFilePath: string): string => {
 	const info = stripOffFrontMatter(md);
@@ -281,6 +274,7 @@ async function main() {
 		templateHtml: plansTemplateHtml,
 		plans: getPlans(stripeConfig),
 		faqHtml: planPageFaqHtml,
+		featureListHtml: getMarkdownIt().render(createFeatureTableMd(), {}),
 		stripeConfig,
 	};
 

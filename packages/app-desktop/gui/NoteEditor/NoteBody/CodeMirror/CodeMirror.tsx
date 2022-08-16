@@ -259,7 +259,7 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				return commandOutput;
 			},
 		};
-	}, [props.content, props.visiblePanes, addListItem, wrapSelectionWithStrings, setEditorPercentScroll, setViewerPercentScroll, resetScroll, renderedBody]);
+	}, [props.content, props.visiblePanes, addListItem, wrapSelectionWithStrings, setEditorPercentScroll, setViewerPercentScroll, resetScroll]);
 
 	const onEditorPaste = useCallback(async (event: any = null) => {
 		const resourceMds = await handlePasteEvent(event);
@@ -465,6 +465,10 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				color: ${theme.color};
 			}
 
+			div.CodeMirror span.cm-variable-2, div.CodeMirror span.cm-variable-3, div.CodeMirror span.cm-keyword {
+				color: ${theme.color};
+			}
+
 			div.CodeMirror span.cm-quote {
 				color: ${theme.color};
 				opacity: ${theme.blockQuoteOpacity};
@@ -477,10 +481,6 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 			div.CodeMirror span.cm-url {
 				color: ${theme.urlColor};
 				opacity: 0.5;
-			}
-
-			div.CodeMirror span.cm-variable-2, div.CodeMirror span.cm-variable-3, div.CodeMirror span.cm-keyword {
-				color: ${theme.color};
 			}
 
 			div.CodeMirror span.cm-comment {
@@ -614,6 +614,8 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 				resourceInfos: props.resourceInfos,
 				contentMaxWidth: props.contentMaxWidth,
 				mapsToLine: true,
+				// Always using useCustomPdfViewer for now, we can add a new setting for it in future if we need to.
+				useCustomPdfViewer: true,
 			}));
 
 			if (cancelled) return;
@@ -649,6 +651,11 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		// undefined. Maybe due to the error boundary that unmount components.
 		// Since we can't do much about it we just print an error.
 		if (webviewRef.current && webviewRef.current.wrappedInstance) {
+			// To keep consistency among CodeMirror's editing and scroll percents
+			// of Editor and Viewer.
+			const percent = getLineScrollPercent();
+			setEditorPercentScroll(percent);
+			options.percent = percent;
 			webviewRef.current.wrappedInstance.send('setHtml', renderedBody.html, options);
 		} else {
 			console.error('Trying to set HTML on an undefined webview ref');
@@ -667,7 +674,7 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		// props.content has been updated).
 		const textChanged = props.searchMarkers.keywords.length > 0 && (props.content !== previousContent || renderedBody !== previousRenderedBody);
 
-		if (props.searchMarkers !== previousSearchMarkers || textChanged) {
+		if (webviewRef.current?.wrappedInstance && (props.searchMarkers !== previousSearchMarkers || textChanged)) {
 			webviewRef.current.wrappedInstance.send('setMarkers', props.searchMarkers.keywords, props.searchMarkers.options);
 
 			if (editorRef.current) {
@@ -701,6 +708,8 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		return output;
 	}, [styles.cellViewer, props.visiblePanes]);
 
+	const editorPaneVisible = props.visiblePanes.indexOf('editor') >= 0;
+
 	useEffect(() => {
 		if (!editorRef.current) return;
 
@@ -708,10 +717,10 @@ function CodeMirror(props: NoteBodyEditorProps, ref: any) {
 		// we should focus the editor
 		// The intuition is that a panel toggle (with editor in view) is the equivalent of
 		// an editor interaction so users should expect the editor to be focused
-		if (props.visiblePanes.indexOf('editor') >= 0) {
+		if (editorPaneVisible) {
 			editorRef.current.focus();
 		}
-	}, [props.visiblePanes]);
+	}, [editorPaneVisible]);
 
 	useEffect(() => {
 		if (!editorRef.current) return;

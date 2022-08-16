@@ -53,7 +53,7 @@ describe('ShareService', function() {
 			},
 		});
 		await msleep(1);
-		await service.shareNote(note.id);
+		await service.shareNote(note.id, false);
 
 		function checkTimestamps(previousNote: NoteEntity, newNote: NoteEntity) {
 			// After sharing or unsharing, only the updated_time property should
@@ -140,6 +140,7 @@ describe('ShareService', function() {
 		expect(await MasterKey.count()).toBe(1);
 
 		let { folder, note, resource } = await testShareFolder(shareService);
+		await Folder.updateAllShareIds(resourceService());
 
 		// The share service should automatically create a new encryption key
 		// specifically for that shared folder

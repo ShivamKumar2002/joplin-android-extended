@@ -33,6 +33,10 @@ export default class BaseSyncTarget {
 		return true;
 	}
 
+	public static supportsRecursiveLinkedNotes(): boolean {
+		return false;
+	}
+
 	public option(name: string, defaultValue: any = null) {
 		return this.options_ && name in this.options_ ? this.options_[name] : defaultValue;
 	}
@@ -100,15 +104,15 @@ export default class BaseSyncTarget {
 	public async synchronizer(): Promise<Synchronizer> {
 		if (this.synchronizer_) return this.synchronizer_;
 
-		if (this.initState_ == 'started') {
+		if (this.initState_ === 'started') {
 			// Synchronizer is already being initialized, so wait here till it's done.
 			return new Promise((resolve, reject) => {
 				const iid = shim.setInterval(() => {
-					if (this.initState_ == 'ready') {
+					if (this.initState_ === 'ready') {
 						shim.clearInterval(iid);
 						resolve(this.synchronizer_);
 					}
-					if (this.initState_ == 'error') {
+					if (this.initState_ === 'error') {
 						shim.clearInterval(iid);
 						reject(new Error('Could not initialise synchroniser'));
 					}
@@ -137,6 +141,6 @@ export default class BaseSyncTarget {
 		if (!this.synchronizer_) return false;
 		if (!(await this.isAuthenticated())) return false;
 		const sync = await this.synchronizer();
-		return sync.state() != 'idle';
+		return sync.state() !== 'idle';
 	}
 }

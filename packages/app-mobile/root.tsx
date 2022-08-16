@@ -71,7 +71,7 @@ const { SideMenuContentNote } = require('./components/side-menu-content-note.js'
 const { DatabaseDriverReactNative } = require('./utils/database-driver-react-native');
 import { reg } from '@joplin/lib/registry';
 const { defaultState } = require('@joplin/lib/reducer');
-const { FileApiDriverLocal } = require('@joplin/lib/file-api-driver-local.js');
+const { FileApiDriverLocal } = require('@joplin/lib/file-api-driver-local');
 import ResourceFetcher from '@joplin/lib/services/ResourceFetcher';
 import SearchEngine from '@joplin/lib/services/searchengine/SearchEngine';
 const WelcomeUtils = require('@joplin/lib/WelcomeUtils');
@@ -127,7 +127,7 @@ const generalMiddleware = (store: any) => (next: any) => async (action: any) => 
 
 	await reduxSharedMiddleware(store, next, action);
 
-	if (action.type == 'NAV_GO') Keyboard.dismiss();
+	if (action.type === 'NAV_GO') Keyboard.dismiss();
 
 	if (['NOTE_UPDATE_ONE', 'NOTE_DELETE', 'FOLDER_UPDATE_ONE', 'FOLDER_DELETE'].indexOf(action.type) >= 0) {
 		if (!await reg.syncTarget().syncStarted()) void reg.scheduleSync(5 * 1000, { syncSteps: ['update_remote', 'delete_remote'] }, true);
@@ -138,20 +138,20 @@ const generalMiddleware = (store: any) => (next: any) => async (action: any) => 
 		await AlarmService.updateNoteNotification(action.id, action.type === 'NOTE_DELETE');
 	}
 
-	if (action.type == 'SETTING_UPDATE_ONE' && action.key == 'sync.interval' || action.type == 'SETTING_UPDATE_ALL') {
+	if (action.type === 'SETTING_UPDATE_ONE' && action.key === 'sync.interval' || action.type === 'SETTING_UPDATE_ALL') {
 		reg.setupRecurrentSync();
 	}
 
-	if ((action.type == 'SETTING_UPDATE_ONE' && (action.key == 'dateFormat' || action.key == 'timeFormat')) || (action.type == 'SETTING_UPDATE_ALL')) {
+	if ((action.type === 'SETTING_UPDATE_ONE' && (action.key === 'dateFormat' || action.key === 'timeFormat')) || (action.type === 'SETTING_UPDATE_ALL')) {
 		time.setDateFormat(Setting.value('dateFormat'));
 		time.setTimeFormat(Setting.value('timeFormat'));
 	}
 
-	if (action.type == 'SETTING_UPDATE_ONE' && action.key == 'locale' || action.type == 'SETTING_UPDATE_ALL') {
+	if (action.type === 'SETTING_UPDATE_ONE' && action.key === 'locale' || action.type === 'SETTING_UPDATE_ALL') {
 		setLocale(Setting.value('locale'));
 	}
 
-	if ((action.type == 'SETTING_UPDATE_ONE' && (action.key.indexOf('encryption.') === 0)) || (action.type == 'SETTING_UPDATE_ALL')) {
+	if ((action.type === 'SETTING_UPDATE_ONE' && (action.key.indexOf('encryption.') === 0)) || (action.type === 'SETTING_UPDATE_ALL')) {
 		await loadMasterKeysFromSettings(EncryptionService.instance());
 		void DecryptionWorker.instance().scheduleStart();
 		const loadedMasterKeyIds = EncryptionService.instance().loadedMasterKeyIds();
@@ -166,7 +166,7 @@ const generalMiddleware = (store: any) => (next: any) => async (action: any) => 
 		void reg.scheduleSync(null, null, true);
 	}
 
-	if (action.type == 'NAV_GO' && action.routeName == 'Notes') {
+	if (action.type === 'NAV_GO' && action.routeName === 'Notes') {
 		Setting.setValue('activeFolderId', newState.selectedFolderId);
 	}
 
@@ -225,7 +225,7 @@ const appReducer = (state = appDefaultState, action: any) => {
 			let newAction = null;
 			while (navHistory.length) {
 				newAction = navHistory.pop();
-				if (newAction.routeName != state.route.routeName) break;
+				if (newAction.routeName !== state.route.routeName) break;
 			}
 
 			action = newAction ? newAction : navHistory.pop();
@@ -244,7 +244,7 @@ const appReducer = (state = appDefaultState, action: any) => {
 				// If the route *name* is the same (even if the other parameters are different), we
 				// overwrite the last route in the history with the current one. If the route name
 				// is different, we push a new history entry.
-					if (currentRoute.routeName == action.routeName) {
+					if (currentRoute.routeName === action.routeName) {
 					// nothing
 					} else {
 						navHistory.push(currentRoute);
@@ -259,7 +259,7 @@ const appReducer = (state = appDefaultState, action: any) => {
 				// is probably not a common workflow.
 				for (let i = 0; i < navHistory.length; i++) {
 					const n = navHistory[i];
-					if (n.routeName == action.routeName) {
+					if (n.routeName === action.routeName) {
 						navHistory[i] = Object.assign({}, action);
 					}
 				}
@@ -417,7 +417,7 @@ async function initialize(dispatch: Function) {
 	mainLogger.addTarget(TargetType.Database, { database: logDatabase, source: 'm' });
 	mainLogger.setLevel(Logger.LEVEL_INFO);
 
-	if (Setting.value('env') == 'dev') {
+	if (Setting.value('env') === 'dev') {
 		mainLogger.addTarget(TargetType.Console);
 		mainLogger.setLevel(Logger.LEVEL_DEBUG);
 	}
@@ -435,7 +435,7 @@ async function initialize(dispatch: Function) {
 
 	const dbLogger = new Logger();
 	dbLogger.addTarget(TargetType.Database, { database: logDatabase, source: 'm' });
-	if (Setting.value('env') == 'dev') {
+	if (Setting.value('env') === 'dev') {
 		dbLogger.addTarget(TargetType.Console);
 		dbLogger.setLevel(Logger.LEVEL_INFO); // Set to LEVEL_DEBUG for full SQL queries
 	} else {
@@ -474,7 +474,7 @@ async function initialize(dispatch: Function) {
 	setRSA(RSA);
 
 	try {
-		if (Setting.value('env') == 'prod') {
+		if (Setting.value('env') === 'prod') {
 			await db.open({ name: 'joplin.sqlite' });
 		} else {
 			await db.open({ name: 'joplin-1.sqlite' });
@@ -508,7 +508,7 @@ async function initialize(dispatch: Function) {
 
 			// Setting.setValue('sync.target', 10);
 			// Setting.setValue('sync.10.username', 'user1@example.com');
-			// Setting.setValue('sync.10.password', 'hunter1hunter2hunter3');
+			// Setting.setValue('sync.10.password', '111111');
 		}
 
 		if (Setting.value('db.ftsEnabled') === -1) {
@@ -673,7 +673,7 @@ async function initialize(dispatch: Function) {
 	// call will throw an error, alerting us of the issue. Otherwise it will
 	// just print some messages in the console.
 	// ----------------------------------------------------------------------------
-	if (Setting.value('env') == 'dev') await runIntegrationTests();
+	if (Setting.value('env') === 'dev') await runIntegrationTests();
 
 	reg.logger().info('Application initialized');
 }
@@ -698,7 +698,7 @@ class AppComponent extends React.Component {
 		};
 
 		this.handleOpenURL_ = (event: any) => {
-			if (event.url == ShareExtension.shareURL) {
+			if (event.url === ShareExtension.shareURL) {
 				void this.handleShareData();
 			}
 		};
@@ -724,7 +724,7 @@ class AppComponent extends React.Component {
 	// https://discourse.joplinapp.org/t/webdav-config-encryption-config-randomly-lost-on-android/11364
 	// https://discourse.joplinapp.org/t/android-keeps-on-resetting-my-sync-and-theme/11443
 	public async componentDidMount() {
-		if (this.props.appState == 'starting') {
+		if (this.props.appState === 'starting') {
 			this.props.dispatch({
 				type: 'APP_STATE_SET',
 				state: 'initializing',
@@ -830,7 +830,7 @@ class AppComponent extends React.Component {
 	}
 
 	public UNSAFE_componentWillReceiveProps(newProps: any) {
-		if (newProps.syncStarted != this.lastSyncStarted_) {
+		if (newProps.syncStarted !== this.lastSyncStarted_) {
 			if (!newProps.syncStarted) FoldersScreenUtils.refreshFolders();
 			this.lastSyncStarted_ = newProps.syncStarted;
 		}
@@ -845,7 +845,7 @@ class AppComponent extends React.Component {
 	}
 
 	public render() {
-		if (this.props.appState != 'ready') return null;
+		if (this.props.appState !== 'ready') return null;
 		const theme = themeStyle(this.props.themeId);
 
 		let sideMenuContent = null;
@@ -874,7 +874,8 @@ class AppComponent extends React.Component {
 			Config: { screen: ConfigScreen },
 		};
 
-		const statusBarStyle = theme.appearance === 'light' ? 'dark-content' : 'light-content';
+		// const statusBarStyle = theme.appearance === 'light-content';
+		const statusBarStyle = 'light-content';
 
 		return (
 			<View style={{ flex: 1, backgroundColor: theme.backgroundColor }}>
@@ -891,7 +892,8 @@ class AppComponent extends React.Component {
 					}}
 				>
 					<StatusBar barStyle={statusBarStyle} />
-					<MenuContext style={{ flex: 1, backgroundColor: theme.backgroundColor }}>
+					<MenuContext style={{ flex: 1 }}>
+						<SafeAreaView style={{ flex: 0, backgroundColor: theme.backgroundColor2 }}/>
 						<SafeAreaView style={{ flex: 1 }}>
 							<View style={{ flex: 1, backgroundColor: theme.backgroundColor }}>
 								<AppNav screens={appNavInit} />
